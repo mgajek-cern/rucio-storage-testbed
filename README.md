@@ -57,7 +57,7 @@ kubectl describe pod <fts-server pod> -n rucio-tutorial
 
 The image is built via manual trigger via `.github/workflows/build-fts-multiarch.yml` using QEMU emulation on an `ubuntu-latest` (x86_64) runner and pushed to Docker Hub. 
 
-![Image in Dockerhub](./images/image-in-dockerhub.png)
+![Image in Dockerhub](./images/docker-image-in-docker-hub.png.png)
 
 > **NOTE:** cross-compilation for `linux/arm64` via QEMU on the GitHub Actions ubuntu runner is slow. Expect 45-90 minutes for a full build due to the FTS3 dependency chain (davix, gfal2, voms, gridsite, dirq, soci).
 
