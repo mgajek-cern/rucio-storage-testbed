@@ -89,7 +89,6 @@ docker exec <fts-container> tail -f /var/log/fts3/fts3server.log
 # Expected output:
 # INFO ... Server started
 # INFO ... TransfersService interval: 2s
-# DEBUG ... Systole: host 0 out of 1 [0:65535]  ← heartbeat every ~45s
 ```
 
 ### Verify REST endpoint
