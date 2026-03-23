@@ -1,0 +1,3 @@
+[submodule "k8s-tutorial"]
+	path = k8s-tutorial
+	url = git@github.com:mgajek-cern/k8s-tutorial.git
