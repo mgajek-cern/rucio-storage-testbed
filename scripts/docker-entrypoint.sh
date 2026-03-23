@@ -9,6 +9,9 @@
 /usr/sbin/fts_token || echo "fts_token exited"
 /usr/sbin/fts_qos || echo "fts_qos exited"
 
+# Hash CA certificates so Apache's SSLCACertificatePath can find them
+openssl rehash /etc/grid-security/certificates/
+
 # Start httpd in background, fall back to tail if it fails
 /usr/sbin/httpd -DFOREGROUND &
 HTTPD_PID=$!

@@ -9,6 +9,12 @@ services:
       - ftsdb
     networks:
       - fts
+    volumes:
+      # Certificates must be provided externally. See README.md for how to generate them.
+      # Place your files under ./certs/ (git-ignored) before starting.
+      - ./certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
+      - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
+      - ./certs/ca.pem:/etc/grid-security/certificates/ca.pem:ro
 
   ftsdb:
     image: mysql:8

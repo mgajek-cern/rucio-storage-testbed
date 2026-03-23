@@ -86,20 +86,10 @@ COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python
 COPY --from=builder /usr/local/lib64/python3.9/site-packages /usr/local/lib64/python3.9/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Generate self-signed certificates for testing
-RUN mkdir -p /etc/grid-security/certificates && \
-    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout /etc/grid-security/hostkey.pem \
-    -out /etc/grid-security/hostcert.pem \
-    -subj "/CN=fts-test" && \
-    chmod 600 /etc/grid-security/hostkey.pem && \
-    chmod 644 /etc/grid-security/hostcert.pem && \
-    cp /etc/grid-security/hostcert.pem /etc/grid-security/certificates/ && \
-    openssl rehash /etc/grid-security/certificates/
-
 # Create fts3 user and required directories
 RUN useradd -r -m -u 9003 fts3 && \
-    mkdir -p /var/log/fts3 /var/log/fts3rest /etc/fts3 /var/lib/fts3 && \
+    mkdir -p /var/log/fts3 /var/log/fts3rest /etc/fts3 /var/lib/fts3 \
+             /etc/grid-security/certificates && \
     chown -R fts3:fts3 /var/log/fts3 /var/log/fts3rest /var/lib/fts3 && \
     chmod +x /usr/share/fts/fts-database-upgrade.py
 
@@ -109,8 +99,7 @@ RUN echo "" > /etc/httpd/conf.d/ssl.conf && \
     echo "" > /etc/httpd/conf.d/userdir.conf && \
     echo "" > /etc/httpd/conf.d/welcome.conf && \
     echo "" > /etc/httpd/conf.d/zgridsite.conf && \
-    echo "ServerName fts" >> /etc/httpd/conf/httpd.conf && \
-    mkdir -p /etc/grid-security/certificates
+    echo "ServerName fts" >> /etc/httpd/conf/httpd.conf
 
 # Pre-create log files with correct ownership
 RUN touch /var/log/fts3/fts3server.log && \
@@ -128,6 +117,13 @@ COPY scripts/logshow /usr/local/bin/logshow
 RUN chmod +x /usr/local/bin/wait-for-it.sh \
              /usr/local/bin/logshow \
              /docker-entrypoint.sh
+
+# NOTE: Certificates are NOT generated at build time.
+# They must be provided at runtime via volume mounts or Kubernetes secrets:
+#   /etc/grid-security/hostcert.pem  (mode 0644)
+#   /etc/grid-security/hostkey.pem   (mode 0600)
+#   /etc/grid-security/certificates/ (CA bundle, rehash run by entrypoint)
+# See README.md for details.
 
 EXPOSE 8446 8449
 ENTRYPOINT ["/docker-entrypoint.sh"]
