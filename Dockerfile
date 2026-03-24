@@ -29,7 +29,9 @@ RUN git clone https://github.com/cern-fts/gfal2.git /tmp/gfal2 && \
     mkdir /tmp/gfal2/build && cd /tmp/gfal2/build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
     -DPLUGIN_DCAP=OFF -DPLUGIN_GRIDFTP=OFF \
-    -DPLUGIN_SFTP=OFF -DPLUGIN_SRM=OFF -DSKIP_TESTS=TRUE && \
+    -DPLUGIN_SFTP=OFF -DPLUGIN_SRM=OFF \
+    -DPLUGIN_XROOTD=ON -DPLUGIN_HTTP=ON -DPLUGIN_FILE=ON \
+    -DSKIP_TESTS=TRUE && \
     make -j$(nproc) && make install && \
     rm -rf /tmp/gfal2
 
@@ -40,11 +42,13 @@ RUN git clone https://gitlab.cern.ch/fts/fts3.git /tmp/fts3 && \
     make -j$(nproc) && make install && \
     rm -rf /tmp/fts3
 
-# Clone fts-rest-flask (kept for runtime Python path)
+# Clone fts-rest-flask and install Python dependencies including the fts3 REST client
 RUN git clone https://gitlab.cern.ch/fts/fts-rest-flask.git /tmp/fts-rest-flask && \
     cd /tmp/fts-rest-flask && \
     pip3 install setuptools_scm && \
     pip3 install -r requirements.in && \
+    pip3 install cryptography && \
+    pip3 install --no-deps -e . && \
     mkdir -p /usr/libexec/fts3rest && \
     cp /tmp/fts-rest-flask/src/fts3rest/fts3rest.wsgi /usr/libexec/fts3rest/fts3rest.wsgi
 
@@ -68,7 +72,7 @@ RUN dnf install -y epel-release && \
     && dnf clean all
 
 # Python runtime dependencies
-RUN pip3 install "sqlalchemy<2.0" pymysql
+RUN pip3 install "sqlalchemy<2.0" pymysql cryptography
 
 # Copy built binaries and libraries from builder
 COPY --from=builder /usr/sbin/fts_* /usr/sbin/
@@ -78,6 +82,8 @@ COPY --from=builder /usr/lib64/libfts* /usr/lib64/
 COPY --from=builder /usr/lib64/libdavix* /usr/lib64/
 COPY --from=builder /usr/lib64/libgfal2* /usr/lib64/
 COPY --from=builder /usr/lib64/gfal2-plugins/ /usr/lib64/gfal2-plugins/
+COPY --from=builder /usr/bin/gfal-* /usr/bin/
+COPY --from=builder /usr/etc/gfal2.d/ /etc/gfal2.d/
 COPY --from=builder /usr/share/fts/ /usr/share/fts/
 COPY --from=builder /usr/share/fts-mysql/ /usr/share/fts-mysql/
 COPY --from=builder /usr/libexec/fts3rest/ /usr/libexec/fts3rest/
@@ -89,7 +95,9 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Create fts3 user and required directories
 RUN useradd -r -m -u 9003 fts3 && \
     mkdir -p /var/log/fts3 /var/log/fts3rest /etc/fts3 /var/lib/fts3 \
-             /etc/grid-security/certificates && \
+             /etc/grid-security/certificates \
+             /etc/gfal2.d && \
+    mkdir -p /usr/etc && ln -s /etc/gfal2.d /usr/etc/gfal2.d && \
     chown -R fts3:fts3 /var/log/fts3 /var/log/fts3rest /var/lib/fts3 && \
     chmod +x /usr/share/fts/fts-database-upgrade.py
 

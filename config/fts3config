@@ -16,5 +16,8 @@ MaxUrlCopyProcesses = 4
 StagingBulkSize = 1
 StagingWaitingFactor = 1
 
+# Disable XRootD server hostname verification (certs use CN=xrd not FQDN)
+XROOTD_ENV=XrdSecGSISRVNAMES=*
+
 [roles]
 Public = all:transfer;all:config;all:datamanagement

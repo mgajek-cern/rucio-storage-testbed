@@ -1,1 +1,6 @@
-certs
+*.pem
+*.key
+*.srl
+*.csr
+!rucio_ca.key.pem
+!rucio_ca.pem

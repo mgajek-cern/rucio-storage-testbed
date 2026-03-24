@@ -10,11 +10,10 @@ services:
     networks:
       - fts
     volumes:
-      # Certificates must be provided externally. See README.md for how to generate them.
-      # Place your files under ./certs/ (git-ignored) before starting.
       - ./certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
       - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
-      - ./certs/ca.pem:/etc/grid-security/certificates/ca.pem:ro
+      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ./scripts:/scripts:ro
 
   ftsdb:
     image: mysql:8
@@ -31,8 +30,56 @@ services:
     volumes:
       - ftsdb-data:/var/lib/mysql
 
+  xrd1:
+    image: rucio/test-xrootd
+    hostname: xrd1
+    environment:
+      - XRDPORT=1094
+    ports:
+      - "1094:1094"
+    networks:
+      - fts
+    volumes:
+      - ./certs/xrdcert.pem:/tmp/xrdcert.pem:ro
+      - ./certs/xrdkey.pem:/tmp/xrdkey.pem:ro
+      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+    entrypoint: >
+      bash -c "
+        echo '\"/CN=fts\" xrootd' > /etc/grid-security/grid-mapfile &&
+        echo '\"/CN=fts/CN=proxy\" xrootd' >> /etc/grid-security/grid-mapfile &&
+        echo 'setenv XrdSecGSISRVNAMES = *' >> /etc/xrootd/xrdrucio.cfg &&
+        
+        # create a source file on xrd1
+        mkdir -p /rucio &&
+        echo 'fts-test' > /rucio/fts-test-file &&
+        chown xrootd:xrootd /rucio/fts-test-file &&
+
+        /docker-entrypoint.sh
+      "
+
+  xrd2:
+    image: rucio/test-xrootd
+    hostname: xrd2
+    environment:
+      - XRDPORT=1094
+    ports:
+      - "1095:1094"
+    networks:
+      - fts
+    volumes:
+      - ./certs/xrdcert.pem:/tmp/xrdcert.pem:ro
+      - ./certs/xrdkey.pem:/tmp/xrdkey.pem:ro
+      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+    entrypoint: >
+      bash -c "
+        echo '\"/CN=fts\" xrootd' > /etc/grid-security/grid-mapfile &&
+        echo '\"/CN=fts/CN=proxy\" xrootd' >> /etc/grid-security/grid-mapfile &&
+        echo 'setenv XrdSecGSISRVNAMES = *' >> /etc/xrootd/xrdrucio.cfg &&
+        /docker-entrypoint.sh
+      "
+
 networks:
   fts:
-
+ 
 volumes:
   ftsdb-data:
