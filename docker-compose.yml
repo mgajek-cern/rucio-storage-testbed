@@ -14,6 +14,12 @@ services:
       - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
       - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
       - ./scripts:/scripts:ro
+      - ./config/gfal2_http_plugin.conf:/etc/gfal2.d/http_plugin.conf:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sk", "https://localhost:8446/whoami"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   ftsdb:
     image: mysql:8
@@ -48,12 +54,9 @@ services:
         echo '\"/CN=fts\" xrootd' > /etc/grid-security/grid-mapfile &&
         echo '\"/CN=fts/CN=proxy\" xrootd' >> /etc/grid-security/grid-mapfile &&
         echo 'setenv XrdSecGSISRVNAMES = *' >> /etc/xrootd/xrdrucio.cfg &&
-        
-        # create a source file on xrd1
         mkdir -p /rucio &&
         echo 'fts-test' > /rucio/fts-test-file &&
         chown xrootd:xrootd /rucio/fts-test-file &&
-
         /docker-entrypoint.sh
       "
 
@@ -78,8 +81,207 @@ services:
         /docker-entrypoint.sh
       "
 
+  minio1:
+    image: minio/minio:latest
+    hostname: minio1
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - fts
+    volumes:
+      - minio1-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio2:
+    image: minio/minio:latest
+    hostname: minio2
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+    networks:
+      - fts
+    volumes:
+      - minio2-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio1-init:
+    image: minio/mc:latest
+    depends_on:
+      minio1:
+        condition: service_healthy
+    networks:
+      - fts
+    entrypoint: >
+      sh -c "
+        mc alias set local http://minio1:9000 minioadmin minioadmin &&
+        mc mb --ignore-existing local/fts-test &&
+        echo 'fts-test' | mc pipe local/fts-test/fts-test-file &&
+        echo 'MinIO1 bucket ready'
+      "
+    restart: "no"
+
+  minio2-init:
+    image: minio/mc:latest
+    depends_on:
+      minio2:
+        condition: service_healthy
+    networks:
+      - fts
+    entrypoint: >
+      sh -c "
+        mc alias set local http://minio2:9000 minioadmin minioadmin &&
+        mc mb --ignore-existing local/fts-test &&
+        echo 'fts-test' | mc pipe local/fts-test/fts-test-file &&
+        echo 'MinIO2 bucket ready'
+      "
+    restart: "no"
+
+  webdav1:
+    image: rucio/test-webdav
+    hostname: webdav1
+    ports:
+      - "443:443"
+    networks:
+      - fts
+    volumes:
+      - ./certs/webdav1cert.pem:/etc/grid-security/hostcert.pem:ro
+      - ./certs/webdav1key.pem:/etc/grid-security/hostkey.pem:ro
+      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+    entrypoint: >
+      bash -c "
+        . /etc/apache2/envvars &&
+        a2dismod zgridsite || true &&
+        a2enmod ssl dav dav_fs &&
+        a2ensite default-ssl &&
+        openssl rehash /etc/grid-security/certificates/ &&
+        mkdir -p /var/www/webdav &&
+        chown www-data:www-data /var/www/webdav &&
+        exec apache2 -D FOREGROUND
+      "
+
+  webdav2:
+    image: rucio/test-webdav
+    hostname: webdav2
+    ports:
+      - "444:443"
+    networks:
+      - fts
+    volumes:
+      - ./certs/webdav2cert.pem:/etc/grid-security/hostcert.pem:ro
+      - ./certs/webdav2key.pem:/etc/grid-security/hostkey.pem:ro
+      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+    entrypoint: >
+      bash -c "
+        . /etc/apache2/envvars &&
+        a2dismod zgridsite || true &&
+        a2enmod ssl dav dav_fs &&
+        a2ensite default-ssl &&
+        openssl rehash /etc/grid-security/certificates/ &&
+        mkdir -p /var/www/webdav &&
+        chown www-data:www-data /var/www/webdav &&
+        exec apache2 -D FOREGROUND
+      "
+
+
+  # # ── StoRM WebDAV — genuine HTTP TPC support ──────────────────────────────────
+  # # Unlike rucio/test-webdav (Apache mod_dav), StoRM WebDAV implements the
+  # # RFC 2518 cross-server COPY with Source: header, enabling real WebDAV HTTP TPC.
+  # # Image published to ghcr.io by the italiangrid/storm-webdav CI since v1.8.0.
+  # # Served on port 8443 (HTTPS). Storage area: /data/ → /storage/data inside container.
+  # storm1:
+  #   image: ghcr.io/italiangrid/storm-webdav:latest
+  #   platform: linux/amd64
+  #   hostname: storm1
+  #   ports:
+  #     - "8443:8443"
+  #   networks:
+  #     - fts
+  #   environment:
+  #     - STORM_WEBDAV_HOSTNAME_0=storm1
+  #     - STORM_WEBDAV_HTTPS_PORT=8443
+  #     - STORM_WEBDAV_HTTP_PORT=8085
+  #     - STORM_WEBDAV_CERTIFICATE_PATH=/etc/grid-security/hostcert.pem
+  #     - STORM_WEBDAV_PRIVATE_KEY_PATH=/etc/grid-security/hostkey.pem
+  #     - STORM_WEBDAV_TRUST_ANCHORS_DIR=/etc/grid-security/certificates
+  #     - STORM_WEBDAV_TRUST_ANCHORS_REFRESH_INTERVAL=0
+  #     - STORM_WEBDAV_REQUIRE_CLIENT_CERT=false
+  #     - STORM_WEBDAV_AUTHZ_SERVER_ISSUER=https://storm1:8443
+  #     - STORM_WEBDAV_AUTHZ_SERVER_SECRET=supersupersupersecretlongerthan32chars!
+  #     - STORM_WEBDAV_JVM_OPTS=-Xms256m -Xmx512m -Djava.security.egd=file:/dev/./urandom
+  #   volumes:
+  #     - ./certs/webdav1cert.pem:/etc/grid-security/hostcert.pem:ro
+  #     - ./certs/webdav1key.pem:/etc/grid-security/hostkey.pem:ro
+  #     - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+  #     - ./storm-webdav/config/storm1-application.yml:/etc/storm/webdav/config/application.yml:ro
+  #     - storm1-data:/storage/data
+  #   entrypoint:
+  #     - sh
+  #     - -c
+  #     - |
+  #       mkdir -p /tmp/storm-sa.d /storage/data
+  #       printf 'name=data\nrootPath=/storage/data\naccessPoints=/data\nanonymousReadEnabled=true\nauthenticatedReadEnabled=true\nfineGrainedAuthzEnabled=true\n' > /tmp/storm-sa.d/data.properties
+  #       JAR=$(find / -maxdepth 5 -name "*.jar" -not -path "*/jdk/*" 2>/dev/null | head -1)
+  #       exec java ${STORM_WEBDAV_JVM_OPTS} -Dstorm.service.path.sa-conf-dir=/tmp/storm-sa.d -jar ${JAR}
+
+  # storm2:
+  #   image: ghcr.io/italiangrid/storm-webdav:latest
+  #   platform: linux/amd64
+  #   hostname: storm2
+  #   ports:
+  #     - "8444:8443"
+  #   networks:
+  #     - fts
+  #   environment:
+  #     - STORM_WEBDAV_HOSTNAME_0=storm2
+  #     - STORM_WEBDAV_HTTPS_PORT=8443
+  #     - STORM_WEBDAV_HTTP_PORT=8085
+  #     - STORM_WEBDAV_CERTIFICATE_PATH=/etc/grid-security/hostcert.pem
+  #     - STORM_WEBDAV_PRIVATE_KEY_PATH=/etc/grid-security/hostkey.pem
+  #     - STORM_WEBDAV_TRUST_ANCHORS_DIR=/etc/grid-security/certificates
+  #     - STORM_WEBDAV_TRUST_ANCHORS_REFRESH_INTERVAL=0
+  #     - STORM_WEBDAV_REQUIRE_CLIENT_CERT=false
+  #     - STORM_WEBDAV_AUTHZ_SERVER_ISSUER=https://storm2:8443
+  #     - STORM_WEBDAV_AUTHZ_SERVER_SECRET=supersupersupersecretlongerthan32chars!
+  #     - STORM_WEBDAV_JVM_OPTS=-Xms256m -Xmx512m -Djava.security.egd=file:/dev/./urandom
+  #   volumes:
+  #     - ./certs/webdav2cert.pem:/etc/grid-security/hostcert.pem:ro
+  #     - ./certs/webdav2key.pem:/etc/grid-security/hostkey.pem:ro
+  #     - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+  #     - ./storm-webdav/config/storm2-application.yml:/etc/storm/webdav/config/application.yml:ro
+  #     - storm2-data:/storage/data
+  #   entrypoint:
+  #     - sh
+  #     - -c
+  #     - |
+  #       mkdir -p /tmp/storm-sa.d /storage/data
+  #       printf 'name=data\nrootPath=/storage/data\naccessPoints=/data\nanonymousReadEnabled=true\nauthenticatedReadEnabled=true\nfineGrainedAuthzEnabled=true\n' > /tmp/storm-sa.d/data.properties
+  #       JAR=$(find / -maxdepth 5 -name "*.jar" -not -path "*/jdk/*" 2>/dev/null | head -1)
+  #       exec java ${STORM_WEBDAV_JVM_OPTS} -Dstorm.service.path.sa-conf-dir=/tmp/storm-sa.d -jar ${JAR}
+
+
 networks:
   fts:
- 
+
 volumes:
   ftsdb-data:
+  minio1-data:
+  minio2-data:
+  # storm1-data:
+  # storm2-data:

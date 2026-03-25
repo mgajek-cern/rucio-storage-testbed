@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-test-fts.py — test FTS3 REST API end-to-end using the fts3 Python REST client.
+test-fts-with-xrootd.py — test FTS3 REST API end-to-end using the fts3 Python REST client.
 Handles proxy delegation automatically via M2Crypto (same approach as Rucio's fts-cron).
 
 Usage:
   # From host (requires fts3 + M2Crypto installed locally):
-  python3 scripts/test-fts.py
+  python3 scripts/test-fts-with-xrootd.py
 
   # From inside the FTS container (recommended):
-  docker exec <fts-container> bash -c 'FTS=https://fts:8446 python3 /scripts/test-fts.py'
+  docker exec <fts-container> bash -c 'FTS=https://fts:8446 python3 /scripts/test-fts-with-xrootd.py'
 """
 
 import datetime
