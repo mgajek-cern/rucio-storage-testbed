@@ -1,0 +1,117 @@
+name: FTS Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Certificates
+      - name: Generate certificates
+        run: |
+          mkdir -p certs
+          cd certs
+
+          # FTS host cert — Key Usage required for XRootD GSI proxy delegation
+          cat > /tmp/fts-ext.cnf << 'EOF'
+          [ v3_req ]
+          keyUsage = digitalSignature, keyEncipherment
+          extendedKeyUsage = clientAuth
+          EOF
+
+          openssl req -nodes -newkey rsa:2048 \
+            -keyout hostkey.pem -out hostcert.csr -subj "/CN=fts"
+          openssl x509 -req -days 365 \
+            -in hostcert.csr \
+            -CA rucio_ca.pem -CAkey rucio_ca.key.pem -CAcreateserial \
+            -extfile /tmp/fts-ext.cnf -extensions v3_req \
+            -out hostcert.pem
+          chmod 600 hostkey.pem
+
+          # XRootD cert
+          openssl req -nodes -newkey rsa:2048 \
+            -keyout xrdkey.pem -out xrdcert.csr -subj "/CN=xrd"
+          openssl x509 -req -days 365 \
+            -in xrdcert.csr \
+            -CA rucio_ca.pem -CAkey rucio_ca.key.pem -CAcreateserial \
+            -out xrdcert.pem
+          chmod 600 xrdkey.pem
+
+          # WebDAV certs — CN must match container hostname
+          for host in webdav1 webdav2; do
+            openssl req -nodes -newkey rsa:2048 \
+              -keyout ${host}key.pem -out ${host}cert.csr -subj "/CN=${host}"
+            openssl x509 -req -days 365 \
+              -in ${host}cert.csr \
+              -CA rucio_ca.pem -CAkey rucio_ca.key.pem -CAcreateserial \
+              -out ${host}cert.pem
+            chmod 600 ${host}key.pem
+          done
+
+          rm -f *.csr *.srl /tmp/fts-ext.cnf
+
+      # Stack
+      - name: Set up QEMU (for x86_64 images on arm runners)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build and start stack
+        run: docker compose up -d --build
+
+      - name: Wait for FTS to be healthy
+        run: |
+          for i in $(seq 1 40); do
+            code=$(curl -sk -o /dev/null -w '%{http_code}' \
+              --cert certs/hostcert.pem --key certs/hostkey.pem \
+              --cacert certs/rucio_ca.pem \
+              https://localhost:8446/whoami) || true
+            [[ "$code" == "200" ]] && { echo "FTS ready after ${i}s"; exit 0; }
+            echo "  [$i] HTTP $code — waiting..."
+            sleep 3
+          done
+          echo "FTS did not become healthy in time"
+          docker compose logs fts
+          exit 1
+
+      # Tests
+      - name: Run XRootD TPC test
+        run: |
+          docker exec fts-multiarch-build-fts-1 bash -c \
+            'FTS=https://fts:8446 python3 /scripts/test-fts-with-xrootd.py'
+
+      - name: Run S3 / MinIO test
+        run: ./scripts/test-s3.sh
+
+      - name: Run WebDAV test
+        run: ./scripts/test-webdav.sh
+
+      # Diagnostics on failure
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          echo "=== FTS logs ==="
+          docker compose logs fts
+          echo "=== XRD1 logs ==="
+          docker compose logs xrd1
+          echo "=== XRD2 logs ==="
+          docker compose logs xrd2
+          echo "=== WebDAV1 logs ==="
+          docker compose logs webdav1
+          echo "=== WebDAV2 logs ==="
+          docker compose logs webdav2
+          echo "=== MinIO1 logs ==="
+          docker compose logs minio1
+          echo "=== MinIO2 logs ==="
+          docker compose logs minio2
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
