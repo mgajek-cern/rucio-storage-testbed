@@ -4,6 +4,13 @@ Builds a multi-architecture (`linux/amd64`, `linux/arm64`) Docker image for the 
 
 The official x86_64 reference image is maintained in [rucio/containers](https://github.com/rucio/containers/tree/master/test-fts). This repository replicates that setup with a source-based build to support arm64.
 
+## TODO
+
+- [ ] docker-compose — Improve the current setup to include rucio–fts3 communication and certificate-based authentication, similar to rucio/rucio, with smoke tests against the Rucio REST API
+- [ ] docker-compose — Demonstrate both OIDC token–based and certificate-based authentication
+- [ ] docker-compose — Demonstrate TPC with production-like systems (mainly Sotmr-WeDav and intertwin/teapot; optionally dCache and EOS, though their configuration is somewhat time-consuming), including Storm-WebDav containers
+- [ ] k8s tutorial — Map and organize knowledge within the forked repository
+
 ## Repository structure
 
 ```
@@ -28,14 +35,10 @@ fts-multiarch-build/
 ├── scripts/
 │   ├── docker-entrypoint.sh
 │   ├── test-fts-with-xrootd.py   # XRootD TPC test (run inside FTS container)
-│   ├── test-s3.sh                # S3/MinIO transfer test
-│   ├── test-webdav.sh            # WebDAV transfer test
-│   ├── test-storm-tpc.sh         # StoRM WebDAV HTTP TPC test
+│   ├── test-fts-with-s3.sh       # S3/MinIO transfer test
+│   ├── test-fts-with-webdav.sh   # WebDAV transfer test
 │   ├── wait-for-it.sh
 │   └── logshow
-├── storm-webdav/
-│   ├── config/                   # StoRM WebDAV application configs
-│   └── sa.d/                     # Storage area definitions
 ├── Dockerfile
 ├── docker-compose.yml
 └── README.md
