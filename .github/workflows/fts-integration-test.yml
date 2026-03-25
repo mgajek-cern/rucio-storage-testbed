@@ -63,8 +63,8 @@ jobs:
       - name: Set up QEMU (for x86_64 images on arm runners)
         uses: docker/setup-qemu-action@v3
 
-      - name: Build and start stack
-        run: docker compose up -d --build
+      - name: Start stack
+        run: docker compose -f docker-compose.ci.yml up -d
 
       - name: Wait for FTS to be healthy
         run: |
@@ -88,10 +88,10 @@ jobs:
             'FTS=https://fts:8446 python3 /scripts/test-fts-with-xrootd.py'
 
       - name: Run S3 / MinIO test
-        run: ./scripts/test-s3.sh
+        run: ./scripts/test-fts-with-s3.sh
 
       - name: Run WebDAV test
-        run: ./scripts/test-webdav.sh
+        run: ./scripts/test-fts-with-webdav.sh
 
       # Diagnostics on failure
       - name: Dump logs on failure
