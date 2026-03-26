@@ -8,7 +8,7 @@ The official x86_64 reference image is maintained in [rucio/containers](https://
 
 - [ ] docker-compose — Improve the current setup to include rucio–fts3 communication and certificate-based authentication, similar to rucio/rucio, with smoke tests against the Rucio REST API
 - [ ] docker-compose — Demonstrate both OIDC token–based and certificate-based authentication
-- [ ] docker-compose — Demonstrate TPC with production-like systems (mainly Sotmr-WeDav and intertwin/teapot; optionally dCache and EOS, though their configuration is somewhat time-consuming), including Storm-WebDav containers
+- [ ] docker-compose — Demonstrate TPC with production-like systems (mainly Sotrm-WeDav and intertwin/teapot; optionally dCache and EOS, though their configuration is somewhat time-consuming), including Storm-WebDav containers
 - [ ] k8s tutorial — Map and organize knowledge within the forked repository
 
 ## Repository structure
@@ -27,10 +27,8 @@ fts-multiarch-build/
 │   ├── fts3rest.conf             # Apache/httpd configuration
 │   ├── fts-activemq.conf         # ActiveMQ messaging configuration
 │   ├── gfal2_http_plugin.conf    # gfal2 HTTP plugin (S3 credentials, WebDAV settings)
-│   ├── webdav1-ssl.conf          # Apache SSL config for webdav1
-│   └── webdav2-ssl.conf          # Apache SSL config for webdav2
 ├── docs/
-│   ├── certificates.md           # Certificate generation and Kubernetes setup
+│   ├── certificates.md                 # Certificate generation setup
 │   └── storage-integration-testing.md  # XRootD, S3, WebDAV test guide
 ├── scripts/
 │   ├── docker-entrypoint.sh
@@ -38,6 +36,8 @@ fts-multiarch-build/
 │   ├── test-fts-with-s3.sh       # S3/MinIO transfer test
 │   ├── test-fts-with-webdav.sh   # WebDAV transfer test
 │   ├── wait-for-it.sh
+│   ├── bootstrap-db.py           # initializes the Rucio database before the server starts
+│   ├── rucio-init.sh             # initializes Rucio accounts, RSEs, protocols, distances and quotas once the server has started
 │   └── logshow
 ├── Dockerfile
 ├── docker-compose.yml
@@ -82,19 +82,15 @@ docker buildx build --platform linux/amd64,linux/arm64 -t test-fts:local .
 docker compose up -d
 
 # 3. Verify FTS is up
+# no authentication
 curl -sk https://localhost:8446/whoami
+# certificate-based authentication
+curl -sk --cert certs/hostcert.pem --key certs/hostkey.pem --cacert certs/rucio_ca.pem https://localhost:8446/whoami
 ```
 
 For certificate generation details see [docs/certificates.md](docs/certificates.md).
 
 For storage transfer tests (XRootD, S3, WebDAV) see [docs/storage-integration-testing.md](docs/storage-integration-testing.md).
-
-## Known limitations
-
-- `mod_gridsite` is not available in this source build — X.509 proxy delegation via gridsite is disabled. Standard `mod_ssl` certificate authentication is fully functional.
-- The FTS3 REST frontend (`fts-rest-flask`) is installed from source rather than via RPM, as the DMC repository does not provide arm64 packages.
-- XRootD GSI hostname verification is disabled via `XrdSecGSISRVNAMES=*` because test certificates use `CN=xrd` rather than the full container hostname.
-- `rucio/test-webdav` (Apache `mod_dav`) does not support WebDAV HTTP TPC. `DEFAULT_COPY_MODE=streamed` is used so FTS acts as data intermediary for WebDAV→WebDAV transfers. See [docs/storage-integration-testing.md](docs/storage-integration-testing.md) for details.
 
 ## References
 

@@ -82,7 +82,7 @@ services:
       "
 
   minio1:
-    image: minio/minio:latest
+    image: minio/minio
     hostname: minio1
     command: server /data --console-address ":9001"
     environment:
@@ -102,7 +102,7 @@ services:
       retries: 5
 
   minio2:
-    image: minio/minio:latest
+    image: minio/minio
     hostname: minio2
     command: server /data --console-address ":9001"
     environment:
@@ -122,7 +122,7 @@ services:
       retries: 5
 
   minio1-init:
-    image: minio/mc:latest
+    image: minio/mc
     depends_on:
       minio1:
         condition: service_healthy
@@ -138,7 +138,7 @@ services:
     restart: "no"
 
   minio2-init:
-    image: minio/mc:latest
+    image: minio/mc
     depends_on:
       minio2:
         condition: service_healthy
@@ -199,6 +199,58 @@ services:
         exec apache2 -D FOREGROUND
       "
 
+  ruciodb:
+    image: postgres:14
+    hostname: ruciodb
+    environment:
+      - POSTGRES_USER=rucio
+      - POSTGRES_PASSWORD=rucio
+      - POSTGRES_DB=rucio
+    networks:
+      - fts
+    volumes:
+      - ruciodb-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rucio"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rucio:
+    image: rucio/rucio-server
+    hostname: rucio
+    ports:
+      - "8445:80"
+    depends_on:
+      ruciodb:
+        condition: service_healthy
+      fts:
+        condition: service_healthy
+    networks:
+      - fts
+    entrypoint:
+      - bash
+      - -c
+      - |
+        python3 /scripts/bootstrap-db.py &&
+        exec /docker-entrypoint.sh httpd -DFOREGROUND
+    volumes:
+      - ./certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
+      - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
+      # Hash-named file for SSLCACertificatePath lookups
+      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      # Plain .pem so the entrypoint glob (*.pem) can add it to the system trust store
+      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/rucio_ca.pem:ro
+      - ./config/rucio.cfg:/opt/rucio/etc/rucio.cfg:ro
+      - ./config/alembic.ini:/opt/rucio/etc/alembic.ini:ro
+      - ./scripts:/scripts:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost/ping"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 20
+
 networks:
   fts:
 
@@ -206,4 +258,4 @@ volumes:
   ftsdb-data:
   minio1-data:
   minio2-data:
-  
+  ruciodb-data:
