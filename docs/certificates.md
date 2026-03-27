@@ -10,11 +10,11 @@ If you need to generate new leaf certificates from the Rucio CA (requires the CA
 
 ```bash
 # FTS host cert — must include Key Usage for XRootD GSI TPC proxy delegation
-cat > /tmp/fts-ext.cnf << 'EOF'
+cat > /tmp/fts-ext.cnf << 'EXTEOF'
 [ v3_req ]
 keyUsage = digitalSignature, keyEncipherment
 extendedKeyUsage = clientAuth
-EOF
+EXTEOF
 
 openssl req -nodes -newkey rsa:2048 \
   -keyout certs/hostkey.pem \
@@ -26,6 +26,10 @@ openssl x509 -req -days 365 \
   -extfile /tmp/fts-ext.cnf -extensions v3_req \
   -out certs/hostcert.pem
 chmod 600 certs/hostkey.pem
+
+# Combined cert+key — required by Rucio conveyor to authenticate against FTS
+cat certs/hostcert.pem certs/hostkey.pem > certs/hostcert_with_key.pem
+chmod 600 certs/hostcert_with_key.pem
 
 # XRootD cert
 openssl req -nodes -newkey rsa:2048 \
@@ -56,21 +60,8 @@ rm -f certs/*.csr certs/*.srl /tmp/fts-ext.cnf
 
 > **NOTE:** The FTS host certificate **must** include `Key Usage = digitalSignature, keyEncipherment`. Without this, XRootD's GSI implementation cannot create a proxy certificate for TPC authentication, causing transfers to fail with `no delegated credentials for tpc`.
 
+> **NOTE:** The combined `hostcert_with_key.pem` (cert + key concatenated) is required by the Rucio conveyor daemon (`[conveyor] usercert`) to authenticate TLS connections to FTS when submitting transfer jobs.
+
 > **NOTE:** XRootD certificates use `CN=xrd` (not a hostname). The docker-compose stack sets `XrdSecGSISRVNAMES=*` to bypass hostname verification, which is required because the cert CN does not match the Docker container hostname.
 
 > **NOTE:** Each WebDAV certificate must use a CN matching its container hostname (`CN=webdav1`, `CN=webdav2`). Connections from inside the Docker network use these hostnames for TLS SNI validation.
-
-## Kubernetes
-
-Certificates are stored as Kubernetes Secrets and volume-mounted into the pod. See `k8s-tutorial/manifests/fts.yaml` for the full manifest.
-
-```bash
-kubectl create secret tls hostcert-fts \
-  --cert=certs/hostcert.pem \
-  --key=certs/hostkey.pem \
-  -n rucio-tutorial
-
-kubectl create secret generic ca-cert \
-  --from-file=tls.cert=certs/rucio_ca.pem \
-  -n rucio-tutorial
-```
