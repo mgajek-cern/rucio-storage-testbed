@@ -15,18 +15,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Certificates
       - name: Generate certificates
         run: |
           mkdir -p certs
           cd certs
 
-          # FTS host cert — Key Usage required for XRootD GSI proxy delegation
-          cat > /tmp/fts-ext.cnf << 'EOF'
+          cat > /tmp/fts-ext.cnf << 'EXTEOF'
           [ v3_req ]
           keyUsage = digitalSignature, keyEncipherment
           extendedKeyUsage = clientAuth
-          EOF
+          EXTEOF
 
           openssl req -nodes -newkey rsa:2048 \
             -keyout hostkey.pem -out hostcert.csr -subj "/CN=fts"
@@ -36,8 +34,9 @@ jobs:
             -extfile /tmp/fts-ext.cnf -extensions v3_req \
             -out hostcert.pem
           chmod 600 hostkey.pem
+          cat hostcert.pem hostkey.pem > hostcert_with_key.pem
+          chmod 600 hostcert_with_key.pem
 
-          # XRootD cert
           openssl req -nodes -newkey rsa:2048 \
             -keyout xrdkey.pem -out xrdcert.csr -subj "/CN=xrd"
           openssl x509 -req -days 365 \
@@ -46,7 +45,6 @@ jobs:
             -out xrdcert.pem
           chmod 600 xrdkey.pem
 
-          # WebDAV certs — CN must match container hostname
           for host in webdav1 webdav2; do
             openssl req -nodes -newkey rsa:2048 \
               -keyout ${host}key.pem -out ${host}cert.csr -subj "/CN=${host}"
@@ -59,7 +57,6 @@ jobs:
 
           rm -f *.csr *.srl /tmp/fts-ext.cnf
 
-      # Stack
       - name: Set up QEMU (for x86_64 images on arm runners)
         uses: docker/setup-qemu-action@v3
 
@@ -78,10 +75,23 @@ jobs:
             sleep 3
           done
           echo "FTS did not become healthy in time"
-          docker compose logs fts
+          docker compose -f docker-compose.ci.yml logs fts
           exit 1
 
-      # Tests
+      - name: Wait for Rucio to be healthy
+        run: |
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              http://localhost:8445/ping) || true
+            [[ "$code" == "200" ]] && { echo "Rucio ready after ${i}s"; exit 0; }
+            echo "  [$i] HTTP $code — waiting..."
+            sleep 3
+          done
+          echo "Rucio did not become healthy in time"
+          docker compose -f docker-compose.ci.yml logs rucio
+          exit 1
+
+      # FTS smoke tests
       - name: Run XRootD TPC test
         run: |
           docker exec fts-multiarch-build-fts-1 bash -c \
@@ -93,25 +103,24 @@ jobs:
       - name: Run WebDAV test
         run: ./scripts/test-fts-with-webdav.sh
 
+      # Rucio end-to-end test
+      - name: Bootstrap Rucio (accounts, RSEs, protocols)
+        run: ./scripts/rucio-init.sh
+
+      - name: Run Rucio XRD1 → XRD2 transfer test
+        run: ./scripts/test-rucio-transfers.sh
+
       # Diagnostics on failure
       - name: Dump logs on failure
         if: failure()
         run: |
-          echo "=== FTS logs ==="
-          docker compose logs fts
-          echo "=== XRD1 logs ==="
-          docker compose logs xrd1
-          echo "=== XRD2 logs ==="
-          docker compose logs xrd2
-          echo "=== WebDAV1 logs ==="
-          docker compose logs webdav1
-          echo "=== WebDAV2 logs ==="
-          docker compose logs webdav2
-          echo "=== MinIO1 logs ==="
-          docker compose logs minio1
-          echo "=== MinIO2 logs ==="
-          docker compose logs minio2
+          echo "=== FTS logs ===" && docker compose -f docker-compose.ci.yml logs fts
+          echo "=== XRD1 logs ===" && docker compose -f docker-compose.ci.yml logs xrd1
+          echo "=== XRD2 logs ===" && docker compose -f docker-compose.ci.yml logs xrd2
+          echo "=== Rucio logs ===" && docker compose -f docker-compose.ci.yml logs rucio
+          echo "=== WebDAV1 logs ===" && docker compose -f docker-compose.ci.yml logs webdav1
+          echo "=== MinIO1 logs ===" && docker compose -f docker-compose.ci.yml logs minio1
 
       - name: Tear down
         if: always()
-        run: docker compose down -v
+        run: docker compose -f docker-compose.ci.yml down -v
