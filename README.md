@@ -6,8 +6,7 @@ The official x86_64 reference image is maintained in [rucio/containers](https://
 
 ## TODO
 
-- [ ] docker-compose — Improve the current setup to include rucio–fts3 communication and certificate-based authentication, similar to rucio/rucio, with smoke tests against the Rucio REST API
-- [ ] docker-compose — Demonstrate both OIDC token–based and certificate-based authentication
+- [ ] docker-compose — Demonstrate both username/pass and OIDC token–based authentication
 - [ ] docker-compose — Demonstrate TPC with production-like systems (mainly Sotrm-WeDav and intertwin/teapot; optionally dCache and EOS, though their configuration is somewhat time-consuming), including Storm-WebDav containers
 - [ ] k8s tutorial — Map and organize knowledge within the forked repository
 
