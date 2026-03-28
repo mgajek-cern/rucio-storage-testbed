@@ -1,0 +1,110 @@
+name: Run Integration Tests (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+      label:
+        required: true
+        type: string
+      compose_file:
+        required: false
+        type: string
+        default: docker-compose.ci.yml
+
+jobs:
+  test:
+    runs-on: ${{ inputs.runner }}
+    name: ${{ inputs.label }}
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate certificates
+        run: |
+          mkdir -p certs && cd certs
+          cat > /tmp/fts-ext.cnf << 'EXTEOF'
+          [ v3_req ]
+          keyUsage = digitalSignature, keyEncipherment
+          extendedKeyUsage = clientAuth
+          EXTEOF
+          openssl req -nodes -newkey rsa:2048 \
+            -keyout hostkey.pem -out hostcert.csr -subj "/CN=fts"
+          openssl x509 -req -days 365 -in hostcert.csr \
+            -CA rucio_ca.pem -CAkey rucio_ca.key.pem -CAcreateserial \
+            -extfile /tmp/fts-ext.cnf -extensions v3_req -out hostcert.pem
+          chmod 600 hostkey.pem
+          cat hostcert.pem hostkey.pem > hostcert_with_key.pem
+          chmod 600 hostcert_with_key.pem
+          openssl req -nodes -newkey rsa:2048 \
+            -keyout xrdkey.pem -out xrdcert.csr -subj "/CN=xrd"
+          openssl x509 -req -days 365 -in xrdcert.csr \
+            -CA rucio_ca.pem -CAkey rucio_ca.key.pem -CAcreateserial \
+            -out xrdcert.pem
+          chmod 600 xrdkey.pem
+          for host in webdav1 webdav2; do
+            openssl req -nodes -newkey rsa:2048 \
+              -keyout ${host}key.pem -out ${host}cert.csr -subj "/CN=${host}"
+            openssl x509 -req -days 365 -in ${host}cert.csr \
+              -CA rucio_ca.pem -CAkey rucio_ca.key.pem -CAcreateserial \
+              -out ${host}cert.pem
+            chmod 600 ${host}key.pem
+          done
+          rm -f *.csr *.srl /tmp/fts-ext.cnf
+
+      - name: Start stack
+        run: docker compose -f ${{ inputs.compose_file }} up -d
+
+      - name: Wait for FTS
+        run: |
+          for i in $(seq 1 40); do
+            code=$(curl -sk -o /dev/null -w '%{http_code}' \
+              --cert certs/hostcert.pem --key certs/hostkey.pem \
+              --cacert certs/rucio_ca.pem https://localhost:8446/whoami) || true
+            [[ "$code" == "200" ]] && { echo "FTS ready"; exit 0; }
+            echo "  [$i] HTTP $code"; sleep 5
+          done
+          docker compose -f ${{ inputs.compose_file }} logs fts; exit 1
+
+      - name: Wait for Rucio
+        run: |
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              http://localhost:8445/ping) || true
+            [[ "$code" == "200" ]] && { echo "Rucio ready"; exit 0; }
+            echo "  [$i] HTTP $code"; sleep 5
+          done
+          docker compose -f ${{ inputs.compose_file }} logs rucio; exit 1
+
+      - name: XRootD TPC test
+        run: |
+          docker exec fts-multiarch-build-fts-1 bash -c \
+            'FTS=https://fts:8446 python3 /scripts/test-fts-with-xrootd.py'
+
+      - name: S3 / MinIO test
+        run: ./scripts/test-fts-with-s3.sh
+
+      - name: WebDAV test
+        run: ./scripts/test-fts-with-webdav.sh
+
+      - name: Bootstrap Rucio
+        run: ./scripts/rucio-init.sh
+
+      - name: Rucio XRD1 → XRD2 transfer test
+        run: ./scripts/test-rucio-transfers.sh
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          for svc in fts xrd1 xrd2 rucio rucio-oidc keycloak webdav1 minio1; do
+            echo "=== $svc ===" && \
+            docker compose -f ${{ inputs.compose_file }} logs $svc 2>/dev/null || true
+          done
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f ${{ inputs.compose_file }} down -v
