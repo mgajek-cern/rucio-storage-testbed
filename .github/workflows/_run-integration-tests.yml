@@ -25,36 +25,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Generate certificates
-        run: |
-          mkdir -p certs && cd certs
-          cat > /tmp/fts-ext.cnf << 'EXTEOF'
-          [ v3_req ]
-          keyUsage = digitalSignature, keyEncipherment
-          extendedKeyUsage = clientAuth
-          EXTEOF
-          openssl req -nodes -newkey rsa:2048 \
-            -keyout hostkey.pem -out hostcert.csr -subj "/CN=fts"
-          openssl x509 -req -days 365 -in hostcert.csr \
-            -CA rucio_ca.pem -CAkey rucio_ca.key.pem -CAcreateserial \
-            -extfile /tmp/fts-ext.cnf -extensions v3_req -out hostcert.pem
-          chmod 600 hostkey.pem
-          cat hostcert.pem hostkey.pem > hostcert_with_key.pem
-          chmod 600 hostcert_with_key.pem
-          openssl req -nodes -newkey rsa:2048 \
-            -keyout xrdkey.pem -out xrdcert.csr -subj "/CN=xrd"
-          openssl x509 -req -days 365 -in xrdcert.csr \
-            -CA rucio_ca.pem -CAkey rucio_ca.key.pem -CAcreateserial \
-            -out xrdcert.pem
-          chmod 600 xrdkey.pem
-          for host in webdav1 webdav2; do
-            openssl req -nodes -newkey rsa:2048 \
-              -keyout ${host}key.pem -out ${host}cert.csr -subj "/CN=${host}"
-            openssl x509 -req -days 365 -in ${host}cert.csr \
-              -CA rucio_ca.pem -CAkey rucio_ca.key.pem -CAcreateserial \
-              -out ${host}cert.pem
-            chmod 600 ${host}key.pem
-          done
-          rm -f *.csr *.srl /tmp/fts-ext.cnf
+        run: ./scripts/generate-certs.sh
 
       - name: Start stack
         run: docker compose -f ${{ inputs.compose_file }} up -d
@@ -82,7 +53,7 @@ jobs:
 
       - name: XRootD TPC test
         run: |
-          docker exec rucio-storage-testbed-fts-1 bash -c \
+          docker exec fts-multiarch-build-fts-1 bash -c \
             'FTS=https://fts:8446 python3 /scripts/test-fts-with-xrootd.py'
 
       - name: S3 / MinIO test
