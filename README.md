@@ -1,100 +1,64 @@
 # rucio-storage-testbed
 
-Multi-architecture Rucio + FTS3 integration testbed with XRootD, WebDAV, S3 and Keycloak OIDC authentication. Enables end-to-end transfer testing on both linux/amd64 and linux/arm64, including Apple Silicon Macs.
-
-## TODO
-
-- [ ] docker-compose — Demonstrate both username/pass and OIDC token–based authentication
-- [ ] docker-compose — Demonstrate TPC with production-like systems (mainly intertwin/teapot; optionally dCache and EOS, though their configuration is somewhat time-consuming), including Storm-WebDav containers
-- [ ] k8s tutorial — Map and organize knowledge within the forked repository
-
-## Repository structure
-
-```
-rucio-storage-testbed/
-├── .github/workflows/
-│   ├── build-fts-multiarch.yml   # Build and push multi-arch image to Docker Hub
-│   └── integration-test.yml      # End-to-end storage integration tests
-├── certs/                        # Runtime certificates — git-ignored except CA files
-│   ├── rucio_ca.pem              # CA certificate (from k8s-tutorial/secrets/)
-│   └── rucio_ca.key.pem          # CA private key
-├── config/
-│   ├── fts3config                # FTS3 server configuration
-│   ├── fts3restconfig            # REST frontend configuration
-│   ├── fts3rest.conf             # Apache/httpd configuration
-│   ├── fts-activemq.conf         # ActiveMQ messaging configuration
-│   ├── gfal2_http_plugin.conf    # gfal2 HTTP plugin (S3 credentials, WebDAV settings)
-├── docs/
-│   ├── certificates.md                 # Certificate generation setup
-│   └── storage-integration-testing.md  # XRootD, S3, WebDAV test guide
-├── scripts/
-│   ├── docker-entrypoint.sh
-│   ├── test-fts-with-xrootd.py   # XRootD TPC test (run inside FTS container)
-│   ├── test-fts-with-s3.sh       # S3/MinIO transfer test
-│   ├── test-fts-with-webdav.sh   # WebDAV transfer test
-│   ├── wait-for-it.sh
-│   ├── bootstrap-db.py           # initializes the Rucio database before the server starts
-│   ├── rucio-init.sh             # initializes Rucio accounts, RSEs, protocols, distances and quotas once the server has started
-│   └── logshow
-├── Dockerfile
-├── docker-compose.yml
-└── README.md
-```
-
-## Known issues on macOS (Apple Silicon)
-
-The vfkit driver frequently fails with SSH errors when using [rucio/k8s-tutorial](https://github.com/rucio/k8s-tutorial). When switching to the Docker driver, `fts-server` stalls because `rucio/test-fts` has no `arm64` manifest:
-
-```
-Warning  Failed  kubelet  Failed to pull image "rucio/test-fts":
-         no matching manifest for linux/arm64/v8 in the manifest list entries
-```
-
-**Fix:** use the image built by this repository instead.
-
-## Build
-
-### CI (GitHub Actions)
-
-The image is built on manual trigger via `.github/workflows/build-fts-multiarch.yml` using QEMU on an `ubuntu-latest` runner and pushed to Docker Hub.
-
-> Cross-compilation for `linux/arm64` via QEMU is slow — expect 45–90 minutes for a full build.
-
-![](./images/docker-image-in-docker-hub.png.png)
-
-### Local
-
-```bash
-# Current platform only (fast)
-docker build -t test-fts:local .
-
-# Multi-arch (requires buildx)
-docker buildx create --use
-docker buildx build --platform linux/amd64,linux/arm64 -t test-fts:local .
-```
+Multi-architecture Rucio + FTS3 integration testbed with XRootD, WebDAV, S3 and Keycloak OIDC authentication. Enables end-to-end transfer testing on both `linux/amd64` and `linux/arm64`, including Apple Silicon Macs.
 
 ## Quick start
 
 ```bash
-# 1. Generate certificates (see docs/certificates.md)
+# 1. Generate certificates
+./scripts/generate-certs.sh   # see docs/certificates.md for manual steps
+
 # 2. Start the stack
 docker compose up -d
 
-# 3. Verify FTS is up
-# no authentication
-curl -sk https://localhost:8446/whoami
-# certificate-based authentication
-curl -sk --cert certs/hostcert.pem --key certs/hostkey.pem --cacert certs/rucio_ca.pem https://localhost:8446/whoami
+# 3. Bootstrap Rucio (accounts, RSEs, identity)
+./scripts/rucio-init.sh
+
+# 4. Run transfer tests
+./scripts/test-rucio-transfers.sh
 ```
 
-For certificate generation details see [docs/certificates.md](docs/certificates.md).
+## Stack
 
-For storage transfer tests (XRootD, S3, WebDAV) see [docs/storage-integration-testing.md](docs/storage-integration-testing.md).
+| Service | Description | Port |
+|---|---|---|
+| `fts` | FTS3 transfer server (multi-arch) | 8446 |
+| `rucio` | Rucio server — userpass auth | 8445 |
+| `xrd1` / `xrd2` | XRootD storage endpoints | 1094 / 1095 |
+| `webdav1` / `webdav2` | WebDAV storage endpoints | 443 / 444 |
+| `minio1` / `minio2` | S3-compatible storage | 9000 / 9002 |
+
+## Accounts
+
+| Account | Auth | Instance |
+|---|---|---|
+| `ddmlab` / `secret` | userpass (admin) | `rucio` |
+| `jdoe` / `secret` | userpass | `rucio` |
+
+## Tests
+
+```bash
+./scripts/test-fts-with-xrootd.py   # FTS + XRootD TPC
+./scripts/test-fts-with-s3.sh       # FTS + S3/MinIO
+./scripts/test-fts-with-webdav.sh   # FTS + WebDAV
+./scripts/test-rucio-transfers.sh   # Rucio end-to-end (userpass)
+```
+
+## Documentation
+
+- [docs/certificates.md](docs/certificates.md) — Certificate generation
+- [docs/storage-integration-testing.md](docs/storage-integration-testing.md) — Storage test guide
+- [docs/fts-multiarch-build.md](docs/fts-multiarch-build.md) — FTS3 multi-arch image build
+
+## TODO
+
+- [ ] Complete OIDC transfer test (jdoe2 via Keycloak → rucio-oidc → FTS → XRootD)
+- [ ] StoRM-WebDAV integration (intertwin/teapot)
+- [ ] k8s tutorial — map and organize knowledge within the forked repository
 
 ## References
 
-- [Official test-fts image (x86_64)](https://github.com/rucio/containers/tree/master/test-fts)
-- [FTS3 Dockerfile](https://gitlab.cern.ch/fts/fts3/-/blob/3.14.x-release/packaging/docker/Dockerfile)
-- [fts-rest-flask](https://gitlab.cern.ch/fts/fts-rest-flask)
+- [rucio/containers — test-fts](https://github.com/rucio/containers/tree/master/test-fts)
 - [rucio/k8s-tutorial](https://github.com/rucio/k8s-tutorial)
-- [RFC-2518](https://datatracker.ietf.org/doc/html/rfc2518)
+- [FTS3](https://gitlab.cern.ch/fts/fts3)
+- [RFC-2518 (WebDAV)](https://datatracker.ietf.org/doc/html/rfc2518)
