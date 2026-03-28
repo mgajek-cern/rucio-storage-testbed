@@ -205,6 +205,26 @@ services:
         exec apache2 -D FOREGROUND
       "
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0.1
+    hostname: keycloak
+    command: start-dev --health-enabled=true --import-realm
+    environment:
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
+    ports:
+      - "8080:8080"
+    networks:
+      - fts
+    volumes:
+      - ./config/keycloak-realm.json:/opt/keycloak/data/import/rucio-realm.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health/ready || exit 1"]
+      interval: 10s
+      timeout: 10s
+      start_period: 120s
+      retries: 30
+
   ruciodb:
     image: postgres:14
     hostname: ruciodb
@@ -221,6 +241,24 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  ruciodb-oidc:
+    image: postgres:14
+    hostname: ruciodb-oidc
+    environment:
+      - POSTGRES_USER=rucio
+      - POSTGRES_PASSWORD=rucio
+      - POSTGRES_DB=rucio
+    networks:
+      - fts
+    volumes:
+      - ruciodb-oidc-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rucio"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 
   rucio:
     image: rucio/rucio-server
@@ -256,6 +294,43 @@ services:
       start_period: 30s
       retries: 20
 
+  rucio-oidc:
+    image: rucio/rucio-server
+    hostname: rucio-oidc
+    ports:
+      - "8448:80"
+    depends_on:
+      ruciodb-oidc:
+        condition: service_healthy
+      fts:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    networks:
+      - fts
+    entrypoint:
+      - bash
+      - -c
+      - |
+        python3 /scripts/bootstrap-db.py &&
+        exec /docker-entrypoint.sh httpd -DFOREGROUND
+    volumes:
+      - ./config/rucio-oidc.cfg:/opt/rucio/etc/rucio.cfg:ro
+      - ./config/alembic-oidc.ini:/opt/rucio/etc/alembic.ini:ro
+      - ./config/idpsecrets.json:/opt/rucio/etc/idpsecrets.json:ro
+      - ./certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
+      - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
+      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/rucio_ca.pem:ro
+      - ./certs/hostcert_with_key.pem:/etc/grid-security/hostcert_with_key.pem:ro
+      - ./scripts:/scripts:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost/ping"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 20
+
   rucio-client:
     image: rucio/rucio-clients
     hostname: rucio-client
@@ -276,6 +351,8 @@ services:
       - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
       - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
       - ./certs/rucio_ca.pem:/etc/grid-security/certificates/rucio_ca.pem:ro
+      - ./config/rucio-userpass.cfg:/opt/rucio/etc/rucio-userpass.cfg:ro
+      - ./config/rucio-oidc-client.cfg:/opt/rucio/etc/rucio-oidc-client.cfg:ro
       - ./scripts:/scripts:ro
     command: ["/bin/bash", "-c", "while true; do sleep 60; done"]
 
@@ -287,3 +364,4 @@ volumes:
   minio1-data:
   minio2-data:
   ruciodb-data:
+  ruciodb-oidc-data:

@@ -1,0 +1,37 @@
+{
+  "realm": "rucio",
+  "enabled": true,
+  "accessTokenLifespan": 3600,
+  "refreshTokenMaxReuse": 1,
+  "clients": [
+    {
+      "clientId": "rucio-oidc",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "rucio-oidc-secret",
+      "publicClient": false,
+      "redirectUris": [
+        "http://rucio-oidc/auth/oidc_token",
+        "http://rucio-oidc/auth/oidc_code",
+        "http://rucio-oidc/auth/oidc_redirect"
+      ],
+      "standardFlowEnabled": true,
+      "serviceAccountsEnabled": true,
+      "directAccessGrantsEnabled": true
+    }
+  ],
+  "users": [
+    {
+      "username": "jdoe2",
+      "enabled": true,
+      "email": "jdoe2@rucio",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "secret",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
