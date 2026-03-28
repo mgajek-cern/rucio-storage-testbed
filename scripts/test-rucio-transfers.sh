@@ -4,9 +4,9 @@
 # then triggers FTS transfer to XRD2 via replication rule + daemons.
 set -euo pipefail
 
-CLIENT=fts-multiarch-build-rucio-client-1
-RUCIO=fts-multiarch-build-rucio-1
-XRD1=fts-multiarch-build-xrd1-1
+CLIENT=rucio-storage-testbed-rucio-client-1
+RUCIO=rucio-storage-testbed-rucio-1
+XRD1=rucio-storage-testbed-xrd1-1
 TS=$(date +%s)
 SCOPE=test
 NAME=file-${TS}
@@ -16,7 +16,7 @@ rc() { docker exec "$CLIENT" rucio -S userpass -u jdoe --password secret --accou
 
 # ── Delegate proxy to FTS via M2Crypto (required for XRootD TPC) ─────────────
 echo "=== Delegating proxy to FTS ==="
-docker exec fts-multiarch-build-fts-1 python3 -c "
+docker exec rucio-storage-testbed-fts-1 python3 -c "
 import datetime, fts3.rest.client.easy as fts3
 ctx = fts3.Context('https://fts:8446',
     ucert='/etc/grid-security/hostcert.pem',

@@ -19,21 +19,21 @@ The test stack covers three storage backends:
 Tests FTS proxy delegation and XRootD TPC (`xrd1 → xrd2`). Must be run from inside the FTS container where `M2Crypto` is available.
 
 ```bash
-docker exec fts-multiarch-build-fts-1 bash -c \
+docker exec rucio-storage-testbed-fts-1 bash -c \
   'FTS=https://fts:8446 python3 /scripts/test-fts-with-xrootd.py'
 ```
 
 A seed file is created automatically when xrd1 starts. To test with additional files, copy them into xrd1 first:
 
 ```bash
-docker exec fts-multiarch-build-xrd1-1 bash -c \
+docker exec rucio-storage-testbed-xrd1-1 bash -c \
   'echo "my-data" > /rucio/my-file && chown xrootd:xrootd /rucio/my-file'
 ```
 
 Then run the test with overriden source and destination as needed:
 
 ```bash
-docker exec fts-multiarch-build-fts-1 bash -c \
+docker exec rucio-storage-testbed-fts-1 bash -c \
   'FTS=https://fts:8446 SRC=root://xrd1//rucio/my-file DST=root://xrd2//rucio/my-file \
    python3 /scripts/test-fts-with-xrootd.py'
 ```

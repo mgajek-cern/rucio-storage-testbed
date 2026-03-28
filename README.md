@@ -1,19 +1,17 @@
-# fts-multiarch-build
+# rucio-storage-testbed
 
-Builds a multi-architecture (`linux/amd64`, `linux/arm64`) Docker image for the FTS3 server, enabling use of the [rucio/k8s-tutorial](https://github.com/rucio/k8s-tutorial) on Apple Silicon (M1/M2/M3) Macs. The official `rucio/test-fts` image is x86_64 only.
-
-The official x86_64 reference image is maintained in [rucio/containers](https://github.com/rucio/containers/tree/master/test-fts). This repository replicates that setup with a source-based build to support arm64.
+Multi-architecture Rucio + FTS3 integration testbed with XRootD, WebDAV, S3 and Keycloak OIDC authentication. Enables end-to-end transfer testing on both linux/amd64 and linux/arm64, including Apple Silicon Macs.
 
 ## TODO
 
 - [ ] docker-compose — Demonstrate both username/pass and OIDC token–based authentication
-- [ ] docker-compose — Demonstrate TPC with production-like systems (mainly Sotrm-WeDav and intertwin/teapot; optionally dCache and EOS, though their configuration is somewhat time-consuming), including Storm-WebDav containers
+- [ ] docker-compose — Demonstrate TPC with production-like systems (mainly intertwin/teapot; optionally dCache and EOS, though their configuration is somewhat time-consuming), including Storm-WebDav containers
 - [ ] k8s tutorial — Map and organize knowledge within the forked repository
 
 ## Repository structure
 
 ```
-fts-multiarch-build/
+rucio-storage-testbed/
 ├── .github/workflows/
 │   ├── build-fts-multiarch.yml   # Build and push multi-arch image to Docker Hub
 │   └── integration-test.yml      # End-to-end storage integration tests
@@ -61,6 +59,8 @@ Warning  Failed  kubelet  Failed to pull image "rucio/test-fts":
 The image is built on manual trigger via `.github/workflows/build-fts-multiarch.yml` using QEMU on an `ubuntu-latest` runner and pushed to Docker Hub.
 
 > Cross-compilation for `linux/arm64` via QEMU is slow — expect 45–90 minutes for a full build.
+
+![](./images/docker-image-in-docker-hub.png.png)
 
 ### Local
 

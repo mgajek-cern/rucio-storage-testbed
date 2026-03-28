@@ -3,7 +3,7 @@
 # Run from repo root after `docker compose up -d`
 set -euo pipefail
 
-RUCIO=fts-multiarch-build-rucio-1
+RUCIO=rucio-storage-testbed-rucio-1
 FTS="https://fts:8446"
 
 ra() { docker exec "$RUCIO" rucio-admin -S userpass -u ddmlab --password secret "$@"; }
