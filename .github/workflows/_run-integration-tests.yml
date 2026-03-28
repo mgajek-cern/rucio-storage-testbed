@@ -53,7 +53,7 @@ jobs:
 
       - name: XRootD TPC test
         run: |
-          docker exec fts-multiarch-build-fts-1 bash -c \
+          docker exec rucio-storage-testbed-fts-1 bash -c \
             'FTS=https://fts:8446 python3 /scripts/test-fts-with-xrootd.py'
 
       - name: S3 / MinIO test
