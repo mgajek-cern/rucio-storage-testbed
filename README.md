@@ -55,9 +55,9 @@ docker compose up -d
 
 ## TODO
 
-- [ ] Complete OIDC setup including a second FTS instance configured with OIDC tokens (current OIDC test authenticates jdoe2 to Rucio via Keycloak but the conveyor still delegates GSI/x509 to FTS — true OIDC TPC requires FTS bearer token support
-and XRootD configured to accept WLCG tokens)
-- [ ] StoRM-WebDAV integration (intertwin/teapot)
+- [ ] Verify fts-oidc + StoRM HTTP TPC end-to-end (fts-oidc + storm1/storm2 added; bearer token delegation from rucio-oidc conveyor pending Rucio version support). Storm WebDav should 
+- [ ] XRootD SciTokens: add xrd3/xrd4 with xrootd-scitokens plugin for full bearer token TPC on root:// protocol
+- [ ] Optional: Configure intertwin/teapot which under the hood uses Storm-WebDav but is intended for multi-tenancy scenarios
 - [ ] k8s tutorial — map and organize knowledge within the forked repository
 
 ## References
