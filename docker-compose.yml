@@ -37,7 +37,7 @@ services:
       - ftsdb-data:/var/lib/mysql
 
   xrd1:
-    image: rucio/test-xrootd
+    image: rucio/test-xrootd@sha256:27d212ec136d6d2ed7029fc445384053acb551805060cae554597a32e6361df4
     hostname: xrd1
     environment:
       - XRDPORT=1094
@@ -113,7 +113,7 @@ services:
       retries: 20
 
   xrd2:
-    image: rucio/test-xrootd
+    image: rucio/test-xrootd@sha256:27d212ec136d6d2ed7029fc445384053acb551805060cae554597a32e6361df4
     hostname: xrd2
     environment:
       - XRDPORT=1094
@@ -137,7 +137,7 @@ services:
       "
 
   minio1:
-    image: minio/minio
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     hostname: minio1
     command: server /data --console-address ":9001"
     environment:
@@ -157,7 +157,7 @@ services:
       retries: 5
 
   minio2:
-    image: minio/minio
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     hostname: minio2
     command: server /data --console-address ":9001"
     environment:
@@ -177,7 +177,7 @@ services:
       retries: 5
 
   minio1-init:
-    image: minio/mc
+    image: minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
     depends_on:
       minio1:
         condition: service_healthy
@@ -193,7 +193,7 @@ services:
     restart: "no"
 
   minio2-init:
-    image: minio/mc
+    image: minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
     depends_on:
       minio2:
         condition: service_healthy
@@ -209,7 +209,7 @@ services:
     restart: "no"
 
   webdav1:
-    image: rucio/test-webdav
+    image: rucio/test-webdav@sha256:e639fedfa65cbf7516bd52c0e0be1f028f6eb92552454e70ce39b67c10fe6a3a
     hostname: webdav1
     ports:
       - "443:443"
@@ -232,7 +232,7 @@ services:
       "
 
   webdav2:
-    image: rucio/test-webdav
+    image: rucio/test-webdav@sha256:e639fedfa65cbf7516bd52c0e0be1f028f6eb92552454e70ce39b67c10fe6a3a
     hostname: webdav2
     ports:
       - "444:443"
@@ -396,7 +396,7 @@ services:
 
 
   rucio:
-    image: rucio/rucio-server
+    image: rucio/rucio-server@sha256:0d81e6c85616106443814a9c3193e13452da6a36de3d4569a7c9ca2d94db62b1
     hostname: rucio
     ports:
       - "8445:80"
@@ -430,7 +430,7 @@ services:
       retries: 20
 
   rucio-oidc:
-    image: rucio/rucio-server
+    image: rucio/rucio-server@sha256:0d81e6c85616106443814a9c3193e13452da6a36de3d4569a7c9ca2d94db62b1
     hostname: rucio-oidc
     ports:
       - "8448:80"
@@ -467,7 +467,7 @@ services:
       retries: 20
 
   rucio-client:
-    image: rucio/rucio-clients
+    image: rucio/rucio-clients@sha256:d03fd88c2b6fe50a64a95cc7001486208aa115e3997658359158746eb178cc1d
     hostname: rucio-client
     depends_on:
       rucio:

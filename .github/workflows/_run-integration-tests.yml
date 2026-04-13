@@ -24,6 +24,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up QEMU for multi-arch emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: amd64
+
       - name: Pull StoRM WebDAV image (needed for storm-cacerts generation)
         run: docker pull --platform linux/amd64 ghcr.io/italiangrid/storm-webdav:v1.12.0
 
@@ -39,11 +44,11 @@ jobs:
           # If still exited after timeout, dump logs to diagnose crash.
           for c in rucio-storage-testbed-storm1-1 rucio-storage-testbed-storm2-1; do
             echo "  Waiting for $c to be running..."
-            for i in $(seq 1 2); do
+            for i in $(seq 1 36); do
               state=$(docker inspect --format='{{.State.Status}}' "$c" 2>/dev/null) || state="not_found"
               [[ "$state" == "running" ]] && { echo "  $c is running"; break; }
-              if [[ "$i" == "2" ]]; then
-                echo "  $c still $state after 20 seconds — dumping logs:"
+              if [[ "$i" == "36" ]]; then
+                echo "  $c still $state after 3 minutes — dumping logs:"
                 docker logs "$c" --tail 30 2>&1 || true
               fi
               echo "    [$i] $c state=$state — waiting..."; sleep 5
