@@ -3,6 +3,36 @@
   "enabled": true,
   "accessTokenLifespan": 3600,
   "refreshTokenMaxReuse": 1,
+  "groups": [
+    {
+      "name": "rucio",
+      "path": "/rucio",
+      "subGroups": [
+        {
+          "name": "admins",
+          "path": "/rucio/admins"
+        },
+        {
+          "name": "users",
+          "path": "/rucio/users"
+        }
+      ]
+    },
+    {
+      "name": "atlas",
+      "path": "/atlas",
+      "subGroups": [
+        {
+          "name": "production",
+          "path": "/atlas/production"
+        },
+        {
+          "name": "users",
+          "path": "/atlas/users"
+        }
+      ]
+    }
+  ],
   "clients": [
     {
       "clientId": "rucio-oidc",
@@ -17,7 +47,24 @@
       ],
       "standardFlowEnabled": true,
       "serviceAccountsEnabled": true,
-      "directAccessGrantsEnabled": true
+      "directAccessGrantsEnabled": true,
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "wlcg"
+      ],
+      "protocolMappers": [
+        {
+          "name": "audience-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "rucio-oidc",
+            "access.token.claim": "true"
+          }
+        }
+      ]
     }
   ],
   "users": [
@@ -25,13 +72,64 @@
       "username": "jdoe2",
       "enabled": true,
       "email": "jdoe2@rucio",
+      "emailVerified": true,
       "credentials": [
         {
           "type": "password",
           "value": "secret",
           "temporary": false
         }
+      ],
+      "groups": [
+        "/rucio/users",
+        "/atlas/users"
+      ]
+    },
+    {
+      "username": "adminuser",
+      "enabled": true,
+      "email": "admin@rucio",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin123",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/rucio/admins",
+        "/atlas/production"
       ]
     }
-  ]
+  ],
+  "clientScopes": [
+    {
+      "name": "wlcg",
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "wlcg-version",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "config": {
+            "claim.name": "wlcg.ver",
+            "claim.value": "1.0",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "wlcg-groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "claim.name": "wlcg.groups",
+            "full.path": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "sslRequired": "none"
 }

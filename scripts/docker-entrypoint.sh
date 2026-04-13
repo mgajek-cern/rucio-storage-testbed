@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e -o pipefail
+set -o pipefail
 
 # wait for MySQL readiness
 /usr/local/bin/wait-for-it.sh -h ftsdb -p 3306 -t 3600

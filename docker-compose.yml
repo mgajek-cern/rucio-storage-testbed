@@ -63,6 +63,55 @@ services:
         /docker-entrypoint.sh
       "
 
+  # FTS OIDC instance — bearer token auth, no GSI proxy
+  ftsdb-oidc:
+    image: mysql:8
+    hostname: ftsdb-oidc
+    environment:
+      - MYSQL_USER=fts
+      - MYSQL_PASSWORD=fts
+      - MYSQL_ROOT_PASSWORD=fts
+      - MYSQL_DATABASE=fts
+    networks:
+      - fts
+    volumes:
+      - ftsdb-oidc-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ufts", "-pfts"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+ 
+  fts-oidc:
+    build: .
+    hostname: fts-oidc
+    ports:
+      - "8447:8446"
+    depends_on:
+      ftsdb-oidc:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    networks:
+      - fts
+    volumes:
+      - ./certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
+      - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
+      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ./scripts:/scripts:ro
+      - ./config/fts3config-oidc:/etc/fts3/fts3config:ro
+      - ./config/fts3restconfig-oidc:/etc/fts3/fts3restconfig:ro
+      - ./config/gfal2_http_plugin.conf:/etc/gfal2.d/http_plugin.conf:ro
+      - ./scripts/docker-entrypoint-fts-oidc.sh:/docker-entrypoint.sh:ro
+      - ./config/fts3rest-middleware.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/config/middleware.py:ro
+      - ./config/fts3rest-openidconnect.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/lib/openidconnect.py:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sk", "https://localhost:8446/whoami"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 20
+
   xrd2:
     image: rucio/test-xrootd
     hostname: xrd2
@@ -205,10 +254,96 @@ services:
         exec apache2 -D FOREGROUND
       "
 
+  storm1:
+    image: ghcr.io/italiangrid/storm-webdav:v1.12.0
+    platform: linux/amd64
+    hostname: storm1
+    ports:
+      - "8443:8443"
+      - "8085:8085"
+    depends_on:
+      - keycloak
+    networks:
+      - fts
+    environment:
+      - STORM_WEBDAV_HOSTNAME_0=storm1
+      - STORM_WEBDAV_HTTPS_PORT=8443
+      - STORM_WEBDAV_HTTP_PORT=8085
+      - STORM_WEBDAV_SA_CONFIG_DIR=/etc/storm/webdav/sa.d
+      - STORM_WEBDAV_CERTIFICATE_PATH=/etc/grid-security/hostcert.pem
+      - STORM_WEBDAV_PRIVATE_KEY_PATH=/etc/grid-security/hostkey.pem
+      - STORM_WEBDAV_TRUST_ANCHORS_DIR=/etc/grid-security/certificates
+      - STORM_WEBDAV_TRUST_ANCHORS_REFRESH_INTERVAL=0
+      - STORM_WEBDAV_REQUIRE_CLIENT_CERT=false
+      - STORM_WEBDAV_AUTHZ_SERVER_ENABLE=true
+      - STORM_WEBDAV_AUTHZ_SERVER_ISSUER=https://storm1:8443
+      - STORM_WEBDAV_AUTHZ_SERVER_SECRET=supersupersupersecretlongerthan32chars!
+      - STORM_WEBDAV_OAUTH_ISSUERS_REFRESH_PERIOD_MINUTES=1
+      # Load issuers + policies via Spring profiles (matches official storm-webdav compose)
+      - STORM_WEBDAV_JVM_OPTS=-Xms256m -Xmx512m -Djava.security.egd=file:/dev/./urandom -Dspring.profiles.active=issuers,policies
+    volumes:
+      - ./certs/storm1cert.pem:/etc/grid-security/hostcert.pem:ro
+      - ./certs/storm1key.pem:/etc/grid-security/hostkey.pem:ro
+      - ./certs/trustanchors:/etc/grid-security/certificates:ro
+      # Spring profile config files — mounted at /app/ so Spring Boot finds them on classpath
+      - ./config/storm-application-issuers.yml:/app/application-issuers.yml:ro
+      - ./config/storm-application-policies.yml:/app/application-policies.yml:ro
+      - ./config/data.properties:/etc/storm/webdav/sa.d/data.properties:ro
+      - storm1-data:/storage/data
+      - vomsdir:/etc/grid-security/vomsdir
+    healthcheck:
+      test: ["CMD", "curl", "-s", "http://localhost:8085/.storm-webdav/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 90s
+      retries: 20
+ 
+  storm2:
+    image: ghcr.io/italiangrid/storm-webdav:v1.12.0
+    platform: linux/amd64
+    hostname: storm2
+    ports:
+      - "8444:8443"
+      - "8086:8085"
+    depends_on:
+      - keycloak
+    networks:
+      - fts
+    environment:
+      - STORM_WEBDAV_HOSTNAME_0=storm2
+      - STORM_WEBDAV_HTTPS_PORT=8443
+      - STORM_WEBDAV_HTTP_PORT=8085
+      - STORM_WEBDAV_SA_CONFIG_DIR=/etc/storm/webdav/sa.d
+      - STORM_WEBDAV_CERTIFICATE_PATH=/etc/grid-security/hostcert.pem
+      - STORM_WEBDAV_PRIVATE_KEY_PATH=/etc/grid-security/hostkey.pem
+      - STORM_WEBDAV_TRUST_ANCHORS_DIR=/etc/grid-security/certificates
+      - STORM_WEBDAV_TRUST_ANCHORS_REFRESH_INTERVAL=0
+      - STORM_WEBDAV_REQUIRE_CLIENT_CERT=false
+      - STORM_WEBDAV_AUTHZ_SERVER_ENABLE=true
+      - STORM_WEBDAV_AUTHZ_SERVER_ISSUER=https://storm2:8443
+      - STORM_WEBDAV_AUTHZ_SERVER_SECRET=supersupersupersecretlongerthan32chars!
+      - STORM_WEBDAV_OAUTH_ISSUERS_REFRESH_PERIOD_MINUTES=1
+      - STORM_WEBDAV_JVM_OPTS=-Xms256m -Xmx512m -Djava.security.egd=file:/dev/./urandom -Dspring.profiles.active=issuers,policies
+    volumes:
+      - ./certs/storm2cert.pem:/etc/grid-security/hostcert.pem:ro
+      - ./certs/storm2key.pem:/etc/grid-security/hostkey.pem:ro
+      - ./certs/trustanchors:/etc/grid-security/certificates:ro
+      - ./config/storm-application-issuers.yml:/app/application-issuers.yml:ro
+      - ./config/storm-application-policies.yml:/app/application-policies.yml:ro
+      - ./config/data.properties:/etc/storm/webdav/sa.d/data.properties:ro
+      - storm2-data:/storage/data
+      - vomsdir:/etc/grid-security/vomsdir
+    healthcheck:
+      test: ["CMD", "curl", "-s", "http://localhost:8085/.storm-webdav/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 90s
+      retries: 20
+
   keycloak:
     image: quay.io/keycloak/keycloak:23.0.1
     hostname: keycloak
-    command: start-dev --health-enabled=true --import-realm
+    command: start-dev --features=token-exchange --health-enabled=true --import-realm
     environment:
       - KEYCLOAK_ADMIN=admin
       - KEYCLOAK_ADMIN_PASSWORD=admin
@@ -363,5 +498,9 @@ volumes:
   ftsdb-data:
   minio1-data:
   minio2-data:
+  storm1-data:
+  storm2-data:
   ruciodb-data:
   ruciodb-oidc-data:
+  ftsdb-oidc-data:
+  vomsdir:

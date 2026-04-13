@@ -1,0 +1,22 @@
+storm:
+  authz:
+    policies:
+      - sa: data
+        actions:
+          - all
+        effect: permit
+        description: Grant full access to any authenticated user (testbed)
+        principals:
+          - type: any-authenticated-user
+      - sa: data
+        actions:
+          - list
+          - read
+        effect: permit
+        description: Grant read access to anyone
+        principals:
+          - type: anyone
+  tpc:
+    use-conscrypt: false
+    max-connections: 50
+    verify-checksum: false

@@ -2,5 +2,9 @@
 *.key
 *.srl
 *.csr
+*.namespaces
+*.signing_policy
+storm-cacerts
+trustanchors
 !rucio_ca.key.pem
 !rucio_ca.pem

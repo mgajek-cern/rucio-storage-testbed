@@ -1,0 +1,7 @@
+# Mounted at /app/application-issuers.yml
+# Activated by: -Dspring.profiles.active=issuers,policies
+oauth:
+  enable-oidc: true
+  issuers:
+    - name: keycloak-rucio
+      issuer: http://keycloak:8080/realms/rucio
