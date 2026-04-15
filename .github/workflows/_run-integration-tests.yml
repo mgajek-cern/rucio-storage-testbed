@@ -112,7 +112,7 @@ jobs:
           done
           docker compose -f ${{ inputs.compose_file }} logs fts-oidc; exit 1
 
-      - name: fts-oidc OIDC token auth smoke test
+      - name: fts-oidc OIDC token auth check
         run: |
           # Fetch token from inside fts-oidc container (iss matches registered issuer)
           TOKEN=$(docker exec rucio-storage-testbed-fts-oidc-1 curl -sk \
