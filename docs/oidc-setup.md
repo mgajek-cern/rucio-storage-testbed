@@ -71,8 +71,8 @@ Two upstream bugs are fixed via bind-mounted Python files:
 
 | File | Bug fixed |
 |---|---|
-| `config/fts3rest-middleware.py` | `_load_providers_from_db()` added trailing slash to issuer URL in providers dict key, causing FK violation on `t_token` insert |
-| `config/fts3rest-openidconnect.py` | `get_token_issuer()` added trailing slash to raw `iss` claim, causing `token_issuer_supported()` to return false for all tokens |
+| `patches/fts3rest-middleware.py` | `_load_providers_from_db()` added trailing slash to issuer URL in providers dict key, causing FK violation on `t_token` insert |
+| `patches/fts3rest-openidconnect.py` | `get_token_issuer()` added trailing slash to raw `iss` claim, causing `token_issuer_supported()` to return false for all tokens |
 
 Both bugs produced a mismatch between the providers dict key (slash-normalized) and the `self.clients` dict key (from Keycloak discovery, no slash), resulting in HTTP 403 on every authenticated request.
 
@@ -114,9 +114,9 @@ storm1 and storm2 use Spring Security with OIDC token validation. Configuration 
 
 | File | Content |
 |---|---|
-| `config/storm-application-issuers.yml` | Trusted OIDC issuer (Keycloak) |
-| `config/storm-application-policies.yml` | Fine-grained authz policies + TPC config |
-| `config/data.properties` | Storage area `data` configuration |
+| `config/storm-webdav/storm-application-issuers.yml` | Trusted OIDC issuer (Keycloak) |
+| `config/storm-webdav/storm-application-policies.yml` | Fine-grained authz policies + TPC config |
+| `config/storm-webdav/data.properties` | Storage area `data` configuration |
 
 Activated via: `-Dspring.profiles.active=issuers,policies`
 

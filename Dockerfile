@@ -119,9 +119,9 @@ COPY config/fts/fts3config /etc/fts3/fts3config
 COPY config/fts/fts3rest.conf /etc/httpd/conf.d/fts3rest.conf
 COPY config/fts/fts3restconfig /etc/fts3/fts3restconfig
 COPY config/fts/fts-activemq.conf /etc/fts3/fts-activemq.conf
-COPY scripts/wait-for-it.sh /usr/local/bin/wait-for-it.sh
-COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
-COPY scripts/logshow /usr/local/bin/logshow
+COPY scripts/fts/wait-for-it.sh /usr/local/bin/wait-for-it.sh
+COPY scripts/fts/docker-entrypoint.sh /docker-entrypoint.sh
+COPY scripts/fts/logshow /usr/local/bin/logshow
 RUN chmod +x /usr/local/bin/wait-for-it.sh \
              /usr/local/bin/logshow \
              /docker-entrypoint.sh
