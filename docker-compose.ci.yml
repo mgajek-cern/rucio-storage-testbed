@@ -14,7 +14,7 @@ services:
       - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
       - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
       - ./scripts:/scripts:ro
-      - ./config/gfal2_http_plugin.conf:/etc/gfal2.d/http_plugin.conf:ro
+      - ./config/fts/gfal2_http_plugin.conf:/etc/gfal2.d/http_plugin.conf:ro
     healthcheck:
       test: ["CMD", "curl", "-sk", "https://localhost:8446/whoami"]
       interval: 5s
@@ -99,12 +99,12 @@ services:
       - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
       - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
       - ./scripts:/scripts:ro
-      - ./config/fts3config-oidc:/etc/fts3/fts3config:ro
-      - ./config/fts3restconfig-oidc:/etc/fts3/fts3restconfig:ro
-      - ./config/gfal2_http_plugin.conf:/etc/gfal2.d/http_plugin.conf:ro
+      - ./config/fts/fts3config-oidc:/etc/fts3/fts3config:ro
+      - ./config/fts/fts3restconfig-oidc:/etc/fts3/fts3restconfig:ro
+      - ./config/fts/gfal2_http_plugin.conf:/etc/gfal2.d/http_plugin.conf:ro
       - ./scripts/docker-entrypoint-fts-oidc.sh:/docker-entrypoint.sh:ro
-      - ./config/fts3rest-middleware.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/config/middleware.py:ro
-      - ./config/fts3rest-openidconnect.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/lib/openidconnect.py:ro
+      - ./config/fts/fts3rest-middleware.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/config/middleware.py:ro
+      - ./config/fts/fts3rest-openidconnect.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/lib/openidconnect.py:ro
     healthcheck:
       test: ["CMD", "curl", "-sk", "https://localhost:8446/whoami"]
       interval: 10s
@@ -286,9 +286,9 @@ services:
       - ./certs/storm1key.pem:/etc/grid-security/hostkey.pem:ro
       - ./certs/trustanchors:/etc/grid-security/certificates:ro
       # Spring profile config files — mounted at /app/ so Spring Boot finds them on classpath
-      - ./config/storm-application-issuers.yml:/app/application-issuers.yml:ro
-      - ./config/storm-application-policies.yml:/app/application-policies.yml:ro
-      - ./config/data.properties:/etc/storm/webdav/sa.d/data.properties:ro
+      - ./config/storm-webdav/storm-application-issuers.yml:/app/application-issuers.yml:ro
+      - ./config/storm-webdav/storm-application-policies.yml:/app/application-policies.yml:ro
+      - ./config/storm-webdav/data.properties:/etc/storm/webdav/sa.d/data.properties:ro
       - storm1-data:/storage/data
       - vomsdir:/etc/grid-security/vomsdir
     healthcheck:
@@ -328,9 +328,9 @@ services:
       - ./certs/storm2cert.pem:/etc/grid-security/hostcert.pem:ro
       - ./certs/storm2key.pem:/etc/grid-security/hostkey.pem:ro
       - ./certs/trustanchors:/etc/grid-security/certificates:ro
-      - ./config/storm-application-issuers.yml:/app/application-issuers.yml:ro
-      - ./config/storm-application-policies.yml:/app/application-policies.yml:ro
-      - ./config/data.properties:/etc/storm/webdav/sa.d/data.properties:ro
+      - ./config/storm-webdav/storm-application-issuers.yml:/app/application-issuers.yml:ro
+      - ./config/storm-webdav/storm-application-policies.yml:/app/application-policies.yml:ro
+      - ./config/storm-webdav/data.properties:/etc/storm/webdav/sa.d/data.properties:ro
       - storm2-data:/storage/data
       - vomsdir:/etc/grid-security/vomsdir
     healthcheck:
@@ -352,7 +352,7 @@ services:
     networks:
       - fts
     volumes:
-      - ./config/keycloak-realm.json:/opt/keycloak/data/import/rucio-realm.json:ro
+      - ./config/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health/ready || exit 1"]
       interval: 10s
@@ -418,8 +418,8 @@ services:
       - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
       - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
       - ./certs/rucio_ca.pem:/etc/grid-security/certificates/rucio_ca.pem:ro
-      - ./config/rucio.cfg:/opt/rucio/etc/rucio.cfg:ro
-      - ./config/alembic.ini:/opt/rucio/etc/alembic.ini:ro
+      - ./config/rucio/server.cfg:/opt/rucio/etc/rucio.cfg:ro
+      - ./config/rucio/alembic.ini:/opt/rucio/etc/alembic.ini:ro
       - ./scripts:/scripts:ro
       - ./certs/hostcert_with_key.pem:/etc/grid-security/hostcert_with_key.pem:ro
     healthcheck:
@@ -450,9 +450,9 @@ services:
         python3 /scripts/bootstrap-db.py &&
         exec /docker-entrypoint.sh httpd -DFOREGROUND
     volumes:
-      - ./config/rucio-oidc.cfg:/opt/rucio/etc/rucio.cfg:ro
-      - ./config/alembic-oidc.ini:/opt/rucio/etc/alembic.ini:ro
-      - ./config/idpsecrets.json:/opt/rucio/etc/idpsecrets.json:ro
+      - ./config/rucio/oidc-server.cfg:/opt/rucio/etc/rucio.cfg:ro
+      - ./config/rucio/alembic-oidc.ini:/opt/rucio/etc/alembic.ini:ro
+      - ./config/rucio/idpsecrets.json:/opt/rucio/etc/idpsecrets.json:ro
       - ./certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
       - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
       - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
@@ -486,8 +486,8 @@ services:
       - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
       - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
       - ./certs/rucio_ca.pem:/etc/grid-security/certificates/rucio_ca.pem:ro
-      - ./config/rucio-userpass.cfg:/opt/rucio/etc/rucio-userpass.cfg:ro
-      - ./config/rucio-oidc-client.cfg:/opt/rucio/etc/rucio-oidc-client.cfg:ro
+      - ./config/rucio/userpass-client.cfg:/opt/rucio/etc/userpass-client.cfg:ro
+      - ./config/rucio/oidc-client.cfg:/opt/rucio/etc/oidc-client.cfg:ro
       - ./scripts:/scripts:ro
     command: ["/bin/bash", "-c", "while true; do sleep 60; done"]
 

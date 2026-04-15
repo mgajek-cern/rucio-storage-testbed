@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-storm-tpc.sh — HTTP TPC test using StoRM WebDAV (storm1 → storm2)
+# test-fts-with-storm-webdav.sh — HTTP TPC test using StoRM WebDAV (storm1 → storm2)
 # Uses fts-oidc (port 8447) with Keycloak bearer tokens — no GSI proxy/X.509.
 # FTS-OIDC sends the token as TransferHeaderAuthorization in the COPY request.
 # StoRM validates the token against Keycloak JWKS and applies fine-grained authz.

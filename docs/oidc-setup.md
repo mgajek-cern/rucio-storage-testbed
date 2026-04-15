@@ -17,7 +17,7 @@ The OIDC path replaces the traditional GSI proxy delegation used by the classic 
 **URL:** `http://localhost:8080/realms/rucio`  
 **Admin:** `admin` / `admin`
 
-The realm is imported from `config/keycloak-realm.json` on startup. Key settings:
+The realm is imported from `config/keycloak/realm.json` on startup. Key settings:
 
 - `--features=token-exchange` — required for FTS-OIDC token exchange flow
 - `accessTokenLifespan: 3600` — 1-hour token lifetime

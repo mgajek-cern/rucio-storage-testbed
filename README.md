@@ -16,7 +16,7 @@ docker compose up -d
 
 # 4. Run transfer tests
 ./scripts/test-rucio-transfers.sh
-./scripts/test-storm-tpc.sh
+./scripts/test-fts-with-storm-webdav.sh
 ```
 
 ## Stack
@@ -48,7 +48,7 @@ docker compose up -d
 ./scripts/test-fts-with-xrootd.py   # FTS + XRootD TPC (GSI proxy)
 ./scripts/test-fts-with-s3.sh       # FTS + S3/MinIO
 ./scripts/test-fts-with-webdav.sh   # FTS + WebDAV (Apache mod_dav)
-./scripts/test-storm-tpc.sh         # fts-oidc + StoRM WebDAV HTTP TPC (OIDC token)
+./scripts/test-fts-with-storm-webdav.sh # fts-oidc + StoRM WebDAV HTTP TPC (OIDC token)
 ./scripts/test-rucio-transfers.sh   # Rucio end-to-end (userpass + OIDC)
 ```
 

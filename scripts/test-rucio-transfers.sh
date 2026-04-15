@@ -15,7 +15,7 @@ FTS=rucio-storage-testbed-fts-1
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
 rc_userpass() {
-  docker exec "$CLIENT" rucio --config /opt/rucio/etc/rucio-userpass.cfg "$@"
+  docker exec "$CLIENT" rucio --config /opt/rucio/etc/userpass-client.cfg "$@"
 }
 
 # oidc — jdoe2 against rucio-oidc instance

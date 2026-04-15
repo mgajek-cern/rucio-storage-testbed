@@ -115,10 +115,10 @@ RUN touch /var/log/fts3/fts3server.log && \
     touch /var/log/fts3rest/fts3rest.log && \
     chown -R fts3:fts3 /var/log/fts3rest
 
-COPY config/fts3config /etc/fts3/fts3config
-COPY config/fts3rest.conf /etc/httpd/conf.d/fts3rest.conf
-COPY config/fts3restconfig /etc/fts3/fts3restconfig
-COPY config/fts-activemq.conf /etc/fts3/fts-activemq.conf
+COPY config/fts/fts3config /etc/fts3/fts3config
+COPY config/fts/fts3rest.conf /etc/httpd/conf.d/fts3rest.conf
+COPY config/fts/fts3restconfig /etc/fts3/fts3restconfig
+COPY config/fts/fts-activemq.conf /etc/fts3/fts-activemq.conf
 COPY scripts/wait-for-it.sh /usr/local/bin/wait-for-it.sh
 COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
 COPY scripts/logshow /usr/local/bin/logshow
