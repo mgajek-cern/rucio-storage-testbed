@@ -1,6 +1,6 @@
 services:
   fts:
-    image: mgajekcern/test-fts@sha256:c407d004c0582bf1a1043be20e7299e798a7ccfa70ccd470f82081dbafe6e158
+    image: mgajekcern/test-fts:latest
     hostname: fts
     ports:
       - "8446:8446"
@@ -83,7 +83,7 @@ services:
       retries: 20
  
   fts-oidc:
-    image: mgajekcern/test-fts@sha256:c407d004c0582bf1a1043be20e7299e798a7ccfa70ccd470f82081dbafe6e158
+    image: mgajekcern/test-fts:latest
     hostname: fts-oidc
     ports:
       - "8447:8446"
