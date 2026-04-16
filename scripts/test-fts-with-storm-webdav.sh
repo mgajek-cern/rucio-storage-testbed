@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-fts-with-storm-webdav.sh — HTTP TPC test using StoRM WebDAV (storm1 → storm2)
+# test-storm-tpc.sh — HTTP TPC test using StoRM WebDAV (storm1 → storm2)
 # Uses fts-oidc (port 8447) with Keycloak bearer tokens — no GSI proxy/X.509.
 # FTS-OIDC sends the token as TransferHeaderAuthorization in the COPY request.
 # StoRM validates the token against Keycloak JWKS and applies fine-grained authz.
@@ -43,12 +43,40 @@ storm2_curl_anon() {
     --capath /etc/storm/webdav/trustanchors/ "$@"
 }
 
+fts_curl_cert() {
+  # GSI cert auth — used for job submission when we need fine-grained token control.
+  curl -sk --cacert "$CACERT" \
+    --cert ./certs/hostcert.pem --key ./certs/hostkey.pem "$@"
+}
+
 submit_job() {
   local src=$1 dst=$2
   local response
+  # Pass the bearer token for both source and destination.
+  # HTTP source (storm1:8085, anonymousReadEnabled=true) ignores the token.
+  # Storm2 HTTPS destination validates it via Keycloak JWKS.
+  #
+  # unmanaged_tokens=true: tells fts-oidc to use tokens as-is without attempting
+  # token exchange for refresh tokens. Without this, fts-oidc's TokenManager
+  # calls getAccessTokensWithoutRefresh() which tries to exchange the submitted
+  # token for a refresh token via Keycloak — failing with HTTP 400 because our
+  # short-lived test token was issued for direct use, not for exchange.
+  # With unmanaged=1, MySqlAPI.updateTokenPrepFiles() skips the exchange check:
+  #   AND (t_src.refresh_token IS NOT NULL OR t_src.unmanaged = 1)
   response=$(fts_curl -X POST "$FTS/jobs" \
     -H "Content-Type: application/json" \
-    -d "{\"files\":[{\"sources\":[\"$src\"],\"destinations\":[\"$dst\"]}],\"params\":{\"overwrite\":true}}")
+    -d "{
+      \"files\":[{
+        \"sources\":[\"$src\"],
+        \"destinations\":[\"$dst\"],
+        \"source_tokens\":[\"$TOKEN\"],
+        \"destination_tokens\":[\"$TOKEN\"]
+      }],
+      \"params\":{
+        \"overwrite\":true,
+        \"unmanaged_tokens\":true
+      }
+    }")
   echo "  raw response: $response" >&2
   echo "$response" | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])"
 }
@@ -190,11 +218,26 @@ http_check "storm1 seed" "$seed_code"
 # in the COPY request to storm2. storm2 uses it to GET from storm1.
 # No GSI proxy, no client certificates — pure OIDC token auth.
 echo ""
-echo "=== Storm TPC: storm1 → storm2 (OIDC token, no GSI) ==="
+echo "=== Storm TPC: storm1 → storm2 (OIDC token, HTTP source → HTTPS dest) ==="
 echo "  fts-oidc → COPY to storm2 (HTTP source → HTTPS dest, bearer token auth)"
-# Use HTTP source to avoid CANL TLS validation of self-signed storm1 cert.
-# storm1 exposes plain HTTP on port 8085 with anonymousReadEnabled=true.
-# storm2 (destination) still uses HTTPS — only the source-side TLS is bypassed.
+# StoRM WebDAV's TpcTlsSocketStrategy wraps DefaultClientTlsStrategy with a
+# CANL-backed SSLContext from HttpTransferClientConfiguration. CANL's
+# SSLTrustManager.checkIfTrusted() validates the peer CA against the trust anchors
+# directory and requires a valid namespace — for non-IGTF self-signed CAs this
+# always fails ("No trusted CA certificate was found") regardless of trust anchors,
+# JVM cacerts, conscrypt, or signing_policy content.
+#
+# GH-65 ("Update HTTP-TPC to ignore whether certificates have allowed namespace")
+# is merged and shipped in v1.12.0, but CANL still rejects self-signed CAs at
+# the chain validation level — GH-65 only removes namespace checking, not CA
+# trust. The TPC HTTP client SSLContext is CANL-backed and requires a trusted
+# CA chain regardless. HTTP source bypasses this entirely.
+#
+# Workaround: HTTP source (port 8085, anonymousReadEnabled=true) bypasses CANL
+# peer validation on the pull side. The OIDC token auth is fully demonstrated on
+# the destination write side: fts-oidc attaches the Keycloak bearer token as
+# TransferHeaderAuthorization; storm2 validates it against Keycloak JWKS before
+# accepting the write — the complete OIDC flow is exercised.
 JOB=$(submit_job \
   "http://storm1:8085/data/fts-test-file" \
   "davs://storm2:8443/data/fts-test-file-copy")
@@ -212,6 +255,20 @@ echo ""
 echo "--- storm2 /data/ listing ---"
 storm_curl_anon -X PROPFIND -H 'Depth: 1' https://storm2:8443/data/ \
   | grep -o '<d:href>[^<]*</d:href>' || true
+
+# ── TPC token auth evidence ───────────────────────────────────────────────────
+# Extract from storm2 container logs the TPC pull and token validation entries.
+# StoRM logs to stdout (captured by Docker) — not to a file.
+# Key log classes:
+#   TransferFilter      — logs TPC pull start/completion with source/dest URLs
+#   WlcgScopeAuthzManager — logs scope-based authz decision (PERMIT/DENY)
+#   CompositeJwtDecoder — logs JWT validation against Keycloak JWKS
+echo ""
+echo "=== storm2 TPC + token auth log evidence ==="
+docker logs "$STORM2" 2>&1 \
+  | grep -E "TransferFilter|WlcgScope|CompositeJwt|tpc|third.party|Pull|push|PERMIT|DENY|scope|issuer" \
+  | grep -v "^$" \
+  | tail -20 || echo "  (no matching log entries — run with STORM_WEBDAV_LOG_LEVEL=DEBUG for more detail)"
 
 echo ""
 echo "All StoRM HTTP TPC tests passed."

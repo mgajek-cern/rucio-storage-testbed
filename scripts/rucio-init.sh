@@ -31,14 +31,20 @@ done
 # Restarting storm1/storm2 now (Keycloak confirmed ready above) fixes this.
 echo "=== Restarting StoRM WebDAV (Keycloak now ready) ==="
 docker compose restart storm1 storm2
-echo "  Waiting for StoRM to be healthy..."
-for i in $(seq 1 2); do
-  s1=$(docker inspect --format='{{.State.Health.Status}}' rucio-storage-testbed-storm1-1 2>/dev/null) || s1="starting"
-  s2=$(docker inspect --format='{{.State.Health.Status}}' rucio-storage-testbed-storm2-1 2>/dev/null) || s2="starting"
-  [[ "$s1" == "healthy" && "$s2" == "healthy" ]] && { echo "  ✓ storm1 and storm2 healthy"; break; }
+echo "  Waiting for StoRM to be healthy (up to 3 minutes)..."
+storm_healthy=false
+for i in $(seq 1 18); do
+  s1=$(docker inspect --format='{{.State.Health.Status}}' rucio-storage-testbed-storm1-1 2>/dev/null) || s1="unknown"
+  s2=$(docker inspect --format='{{.State.Health.Status}}' rucio-storage-testbed-storm2-1 2>/dev/null) || s2="unknown"
+  if [[ "$s1" == "healthy" && "$s2" == "healthy" ]]; then
+    echo "  ✓ storm1 and storm2 healthy"
+    storm_healthy=true
+    break
+  fi
   echo "  [$i] storm1=$s1 storm2=$s2 — waiting..."
   sleep 10
 done
+[[ "$storm_healthy" == "true" ]] || echo "  ⚠ StoRM did not reach healthy — continuing (test-storm-tpc.sh will wait)"
 
 FTS="https://fts:8446"
 FTS_OIDC="https://fts-oidc:8446"
@@ -262,12 +268,43 @@ ALTER TABLE t_token MODIFY COLUMN audience varchar(1024) NULL;
 # Note: middleware.py trailing-slash fix is applied via volume mount in docker-compose.yml
 echo "  Restarting fts-oidc to load provider..."
 docker compose restart fts-oidc
-sleep 20
+echo "  Waiting for fts-oidc to be healthy after restart..."
+for i in $(seq 1 30); do
+  code=$(docker exec rucio-storage-testbed-fts-oidc-1     curl -sk -o /dev/null -w '%{http_code}' https://localhost:8446/whoami 2>/dev/null) || code=0
+  [[ "$code" == "200" || "$code" == "403" ]] && { echo "  fts-oidc up (HTTP $code)"; break; }
+  echo "  [$i] fts-oidc HTTP $code — waiting..."
+  sleep 10
+done
 
 # Restart storm so CompositeJwtDecoder loads Keycloak JWKS
 echo "=== Restarting StoRM to load Keycloak JWKS ==="
 docker compose restart storm1 storm2
-sleep 30
+# Wait for storm to be running (arm64 QEMU startup is slow ~3min)
+# test-storm-tpc.sh also polls, but giving it a head start avoids timeout
+echo "  Waiting for StoRM containers to be running after JWKS restart..."
+for c in rucio-storage-testbed-storm1-1 rucio-storage-testbed-storm2-1; do
+  for i in $(seq 1 36); do
+    state=$(docker inspect --format='{{.State.Status}}' "$c" 2>/dev/null) || state="unknown"
+    [[ "$state" == "running" ]] && { echo "  $c running"; break; }
+    echo "    [$i] $c state=$state"; sleep 5
+  done
+done
+
+# ── Delegate GSI proxy to FTS (required for XRootD TPC via rucio conveyor) ────
+# The conveyor-submitter authenticates to FTS using the hostcert. FTS needs a
+# delegated proxy to perform XRootD TPC. Delegate from both FTS instances.
+echo "=== Delegating GSI proxy to FTS instances ==="
+for fts_url in "https://fts:8446" "https://fts-oidc:8446"; do
+  docker exec rucio-storage-testbed-fts-1 python3 -c "
+import datetime, fts3.rest.client.easy as fts3
+ctx = fts3.Context('$fts_url',
+    ucert='/etc/grid-security/hostcert.pem',
+    ukey='/etc/grid-security/hostkey.pem',
+    verify=False)
+fts3.delegate(ctx, lifetime=datetime.timedelta(hours=48), force=True)
+print('  Delegated to $fts_url — DN:', fts3.whoami(ctx)['user_dn'])
+" 2>/dev/null || echo "  Warning: delegation to $fts_url failed (non-fatal)"
+done
 
 echo ""
 echo "=== Bootstrap complete ==="

@@ -12,6 +12,7 @@ AllowedOAuth2IssuerURLs=http://keycloak:8080/realms/rucio
 Alias=rucio/fts-oidc
 MonitoringMessaging=false
 VerifyAudience=False
+AllowNonManagedTokens=True
 
 [roles]
 Public=all:transfer;all:datamanagement;all:config

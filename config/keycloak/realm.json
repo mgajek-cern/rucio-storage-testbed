@@ -52,19 +52,56 @@
         "openid",
         "profile",
         "email",
-        "wlcg"
+        "wlcg",
+        "fts",
+        "storage.read",
+        "storage.modify"
       ],
       "protocolMappers": [
         {
-          "name": "audience-mapper",
+          "name": "audience-rucio-oidc",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "config": {
             "included.client.audience": "rucio-oidc",
             "access.token.claim": "true"
           }
+        },
+        {
+          "name": "audience-fts-oidc",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "fts-oidc",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "audience-storm1",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "storm1",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "audience-storm2",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "storm2",
+            "access.token.claim": "true"
+          }
         }
-      ]
+      ],
+      "attributes": {
+        "oidc.ciba.grant.enabled": "false",
+        "oauth2.device.authorization.grant.enabled": "false",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false",
+        "token.exchange.standard.flow.enabled": "true"
+      }
     }
   ],
   "users": [
@@ -129,6 +166,21 @@
           }
         }
       ]
+    },
+    {
+      "name": "fts",
+      "protocol": "openid-connect",
+      "description": "FTS transfer scope for Rucio conveyor daemon auth"
+    },
+    {
+      "name": "storage.read",
+      "protocol": "openid-connect",
+      "description": "WLCG storage read scope for TPC source token"
+    },
+    {
+      "name": "storage.modify",
+      "protocol": "openid-connect",
+      "description": "WLCG storage modify scope for TPC destination token"
     }
   ],
   "sslRequired": "none"
