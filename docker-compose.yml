@@ -103,8 +103,8 @@ services:
       - ./config/fts/fts3restconfig-oidc:/etc/fts3/fts3restconfig:ro
       - ./config/fts/gfal2_http_plugin.conf:/etc/gfal2.d/http_plugin.conf:ro
       - ./scripts/fts/docker-entrypoint-fts-oidc.sh:/docker-entrypoint.sh:ro
-      - ./patches/fts/fts3rest-middleware.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/config/middleware.py:ro
-      - ./patches/fts/fts3rest-openidconnect.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/lib/openidconnect.py:ro
+      - ./patches/fts/middleware.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/config/middleware.py:ro
+      - ./patches/fts/openidconnect.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/lib/openidconnect.py:ro
     healthcheck:
       test: ["CMD", "curl", "-sk", "https://localhost:8446/whoami"]
       interval: 10s
@@ -348,7 +348,7 @@ services:
       - KEYCLOAK_ADMIN=admin
       - KEYCLOAK_ADMIN_PASSWORD=admin
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     networks:
       - fts
     volumes:
@@ -459,6 +459,8 @@ services:
       - ./certs/rucio_ca.pem:/etc/grid-security/certificates/rucio_ca.pem:ro
       - ./certs/hostcert_with_key.pem:/etc/grid-security/hostcert_with_key.pem:ro
       - ./scripts:/scripts:ro
+      - ./patches/rucio/fts3.py:/usr/local/lib/python3.9/site-packages/rucio/transfertool/fts3.py:ro
+      - ./patches/rucio/constants.py:/usr/local/lib/python3.9/site-packages/rucio/common/constants.py:ro
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost/ping"]
       interval: 10s

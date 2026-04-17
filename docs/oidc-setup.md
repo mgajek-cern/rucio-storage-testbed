@@ -23,6 +23,26 @@ The realm is imported from `config/keycloak/realm.json` on startup. Key settings
 - `accessTokenLifespan: 3600` — 1-hour token lifetime
 - `refreshTokenMaxReuse: 1` — enables token exchange
 
+### Mandatory User Roles
+For Rucio and FTS to maintain long-lived transfers, users must be able to request **Offline Tokens**. In Keycloak, this is not just a scope but a permission.
+
+**Requirement:** Every user (e.g. `jdoe2`) must have the Realm Role `offline_access` assigned. Without this, Keycloak returns `HTTP 400: Offline tokens not allowed`.
+
+### Audience Mapping (StoRM Compatibility)
+To support Third-Party Copy (TPC) between StoRM endpoints, the `rucio-oidc` client uses a **hardcoded audience mapper**:
+- **Included Custom Audience:** `fts-oidc,STORM1,STORM2,storm1,storm2,rucio-oidc`
+- This ensures that a single token is valid for both the FTS REST API and the StoRM WebDAV storage endpoints.
+
+#### Update the "Fetch a token manually" command:
+Update the example to include the `fts` and `offline_access` scopes, as this is what the Rucio Python code actually requests.
+
+```bash
+# Verify fts and offline_access scopes
+curl -s -u "rucio-oidc:rucio-oidc-secret" \
+  -d "grant_type=password&username=jdoe2&password=secret&scope=openid fts offline_access" \
+  http://localhost:8080/realms/rucio/protocol/openid-connect/token | jq .
+```
+
 ### Client: `rucio-oidc`
 
 Confidential client used by both rucio-oidc and fts-oidc.
@@ -71,8 +91,8 @@ Two upstream bugs are fixed via bind-mounted Python files:
 
 | File | Bug fixed |
 |---|---|
-| `patches/fts3rest-middleware.py` | `_load_providers_from_db()` added trailing slash to issuer URL in providers dict key, causing FK violation on `t_token` insert |
-| `patches/fts3rest-openidconnect.py` | `get_token_issuer()` added trailing slash to raw `iss` claim, causing `token_issuer_supported()` to return false for all tokens |
+| `patches/fts/middleware.py` | `_load_providers_from_db()` added trailing slash to issuer URL in providers dict key, causing FK violation on `t_token` insert |
+| `patches/fts/openidconnect.py` | `get_token_issuer()` added trailing slash to raw `iss` claim, causing `token_issuer_supported()` to return false for all tokens |
 
 Both bugs produced a mismatch between the providers dict key (slash-normalized) and the `self.clients` dict key (from Keycloak discovery, no slash), resulting in HTTP 403 on every authenticated request.
 

@@ -3,33 +3,26 @@
   "enabled": true,
   "accessTokenLifespan": 3600,
   "refreshTokenMaxReuse": 1,
+  "roles": {
+    "realm": [
+      { "name": "offline_access", "description": "Role for creating offline tokens" }
+    ]
+  },
   "groups": [
     {
       "name": "rucio",
       "path": "/rucio",
       "subGroups": [
-        {
-          "name": "admins",
-          "path": "/rucio/admins"
-        },
-        {
-          "name": "users",
-          "path": "/rucio/users"
-        }
+        { "name": "admins", "path": "/rucio/admins" },
+        { "name": "users", "path": "/rucio/users" }
       ]
     },
     {
       "name": "atlas",
       "path": "/atlas",
       "subGroups": [
-        {
-          "name": "production",
-          "path": "/atlas/production"
-        },
-        {
-          "name": "users",
-          "path": "/atlas/users"
-        }
+        { "name": "production", "path": "/atlas/production" },
+        { "name": "users", "path": "/atlas/users" }
       ]
     }
   ],
@@ -48,10 +41,15 @@
       "standardFlowEnabled": true,
       "serviceAccountsEnabled": true,
       "directAccessGrantsEnabled": true,
+      "fullScopeAllowed": true,
       "defaultClientScopes": [
-        "openid",
-        "profile",
-        "email",
+        "openid", "profile", "email", "wlcg", "fts",
+        "storage.read", "storage.modify",
+        "storage.read:/data", "storage.modify:/data",
+        "storage.read:/", "storage.modify:/"
+      ],
+      "optionalClientScopes": [
+        "offline_access",
         "wlcg",
         "fts",
         "storage.read",
@@ -59,38 +57,11 @@
       ],
       "protocolMappers": [
         {
-          "name": "audience-rucio-oidc",
+          "name": "consolidated-audience",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "config": {
-            "included.client.audience": "rucio-oidc",
-            "access.token.claim": "true"
-          }
-        },
-        {
-          "name": "audience-fts-oidc",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-audience-mapper",
-          "config": {
-            "included.custom.audience": "fts-oidc",
-            "access.token.claim": "true"
-          }
-        },
-        {
-          "name": "audience-storm1",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-audience-mapper",
-          "config": {
-            "included.custom.audience": "storm1",
-            "access.token.claim": "true"
-          }
-        },
-        {
-          "name": "audience-storm2",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-audience-mapper",
-          "config": {
-            "included.custom.audience": "storm2",
+            "included.custom.audience": "fts-oidc,STORM1,STORM2,storm1,storm2,rucio-oidc",
             "access.token.claim": "true"
           }
         }
@@ -102,7 +73,12 @@
         "backchannel.logout.revoke.offline.tokens": "false",
         "token.exchange.standard.flow.enabled": "true"
       }
-    }
+    },
+    { "clientId": "fts-oidc", "enabled": true, "publicClient": false, "clientAuthenticatorType": "client-secret", "secret": "fts-oidc-secret" },
+    { "clientId": "storm1", "enabled": true, "publicClient": true },
+    { "clientId": "storm2", "enabled": true, "publicClient": true },
+    { "clientId": "STORM1", "enabled": true, "publicClient": true },
+    { "clientId": "STORM2", "enabled": true, "publicClient": true }
   ],
   "users": [
     {
@@ -110,34 +86,22 @@
       "enabled": true,
       "email": "jdoe2@rucio",
       "emailVerified": true,
+      "realmRoles": [ "offline_access" ],
       "credentials": [
-        {
-          "type": "password",
-          "value": "secret",
-          "temporary": false
-        }
+        { "type": "password", "value": "secret", "temporary": false }
       ],
-      "groups": [
-        "/rucio/users",
-        "/atlas/users"
-      ]
+      "groups": [ "/rucio/users", "/atlas/users" ]
     },
     {
       "username": "adminuser",
       "enabled": true,
       "email": "admin@rucio",
       "emailVerified": true,
+      "realmRoles": [ "offline_access" ],
       "credentials": [
-        {
-          "type": "password",
-          "value": "admin123",
-          "temporary": false
-        }
+        { "type": "password", "value": "admin123", "temporary": false }
       ],
-      "groups": [
-        "/rucio/admins",
-        "/atlas/production"
-      ]
+      "groups": [ "/rucio/admins", "/atlas/production" ]
     }
   ],
   "clientScopes": [
@@ -167,21 +131,13 @@
         }
       ]
     },
-    {
-      "name": "fts",
-      "protocol": "openid-connect",
-      "description": "FTS transfer scope for Rucio conveyor daemon auth"
-    },
-    {
-      "name": "storage.read",
-      "protocol": "openid-connect",
-      "description": "WLCG storage read scope for TPC source token"
-    },
-    {
-      "name": "storage.modify",
-      "protocol": "openid-connect",
-      "description": "WLCG storage modify scope for TPC destination token"
-    }
+    { "name": "fts", "protocol": "openid-connect" },
+    { "name": "storage.read", "protocol": "openid-connect" },
+    { "name": "storage.modify", "protocol": "openid-connect" },
+    { "name": "storage.read:/data", "protocol": "openid-connect" },
+    { "name": "storage.modify:/data", "protocol": "openid-connect" },
+    { "name": "storage.read:/", "protocol": "openid-connect" },
+    { "name": "storage.modify:/", "protocol": "openid-connect" }
   ],
   "sslRequired": "none"
 }

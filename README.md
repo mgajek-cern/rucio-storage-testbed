@@ -61,7 +61,7 @@ docker compose up -d
 
 ## TODO
 
-- [ ] Bearer token delegation from rucio-oidc conveyor to fts-oidc for STORM RSEs (pending Rucio version support for OIDC token forwarding in conveyor)
+- [x] Bearer token delegation from rucio-oidc conveyor to fts-oidc for STORM RSEs (pending Rucio version support for OIDC token forwarding in conveyor)
 - [ ] XRootD SciTokens: add xrd3/xrd4 with xrootd-scitokens plugin for full bearer token TPC on `root://` protocol
 - [ ] intertwin/teapot: evaluate as a multi-tenancy StoRM WebDAV front-end for WLCG token scenarios
 - [ ] k8s tutorial — map and organize knowledge within the forked repository

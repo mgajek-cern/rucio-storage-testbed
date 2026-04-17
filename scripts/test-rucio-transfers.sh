@@ -18,10 +18,6 @@ rc_userpass() {
   docker exec "$CLIENT" rucio --config /opt/rucio/etc/userpass-client.cfg "$@"
 }
 
-# oidc — jdoe2 against rucio-oidc instance
-# Fetches a Keycloak JWT using Basic Auth (confidential client), saves it
-# directly into the Rucio DB via the server-side Python API, then uses the
-# resulting Rucio token via BEARER_TOKEN on the client.
 rc_oidc() {
   # Run rucio CLI server-side in rucio-oidc as ddmlab/root.
   # In this testbed the OIDC transfer test validates the RSE/FTS/daemon pipeline,
@@ -151,11 +147,107 @@ run_transfer_test() {
   "$rc_fn" replica list file "$scope:$name"
 }
 
+# ── STORM transfer test (Rucio conveyor → fts-oidc → StoRM WebDAV, OIDC tokens) ──
+# Seeds a file directly on storm1 storage, registers it in rucio-oidc catalogue,
+# then triggers a replication rule to STORM2. The conveyor-submitter on rucio-oidc
+# uses allow_user_oidc_tokens=True to request a Keycloak token (scope=fts,
+# audience=fts-oidc) and submits to fts-oidc with it. fts-oidc attaches storage
+# tokens (storage.read:/data + storage.modify:/data) to the COPY request.
+# This is the full OIDC conveyor path: Rucio → fts-oidc (bearer token auth)
+# → StoRM WebDAV (TransferHeaderAuthorization validated against Keycloak JWKS).
+run_storm_oidc_transfer_test() {
+  local ts
+  ts=$(date +%s)
+  local scope=test name="storm-file-${ts}"
+
+  echo ""
+  echo "════════════════════════════════════════"
+  echo "  Transfer test — Rucio OIDC → StoRM"
+  echo "  rucio-oidc conveyor → fts-oidc → StoRM WebDAV"
+  echo "════════════════════════════════════════"
+
+  # 1. Ask Rucio where the file SHOULD live on STORM1
+  echo "=== Computing deterministic PFN for STORM1 ==="
+  local pfn
+  pfn=$(docker exec "$RUCIO_OIDC" python3 -c "
+from rucio.rse import rsemanager as rsemgr
+import json
+rse_info = rsemgr.get_rse_info('STORM1')
+pfns = rsemgr.lfns2pfns(rse_info, [{'scope': '$scope', 'name': '$name'}], operation='write')
+print(list(pfns.values())[0])
+")
+  echo "  Target PFN: $pfn"
+
+  # 2. Extract the local path from the PFN for seeding
+  # Converts davs://storm1:8085/data/test/... to /storage/data/test/...
+  local local_fpath=$(echo "$pfn" | sed -E 's|^[a-z]+://storm1:[0-9]+/data/|/storage/data/|')
+
+  # 3. Seed file on storm1 at the computed path
+  echo "=== Seeding file on storm1 ==="
+  docker exec --user root rucio-storage-testbed-storm1-1 sh -c "
+    mkdir -p \$(dirname '$local_fpath')
+    echo 'rucio-storm-oidc-test-$ts' > '$local_fpath'
+    chown storm:storm '$local_fpath'
+    chmod 644 '$local_fpath'
+  "
+  echo "  Seeded: $local_fpath"
+
+  # 4. Pre-creating destination directory on storm2
+  echo "=== Pre-creating destination directory on storm2 ==="
+  local dst_dir
+  dst_dir=$(dirname "$local_fpath")
+  docker exec --user root rucio-storage-testbed-storm2-1 sh -c "
+    mkdir -p '$dst_dir' &&
+    chown -R storm:storm '$dst_dir' &&
+    chmod 755 '$dst_dir'
+  "
+  echo "  storm2 dir ready: $dst_dir"
+
+  # 5. Get file size
+  local bytes
+  bytes=$(docker exec rucio-storage-testbed-storm1-1 sh -c "wc -c < '$local_fpath' | tr -d ' '")
+
+  # 6. Register replica using the computed PFN
+  echo "=== Registering replica on STORM1 ==="
+  docker exec "$RUCIO_OIDC" python3 -c "
+from rucio.client import Client
+import sys
+c = Client()
+try:
+    c.add_replicas(rse='STORM1', files=[{
+        'scope': '$scope', 'name': '$name',
+        'bytes': $bytes, 
+        'adler32': '00000000', 
+        'pfn': '$pfn'
+    }])
+    print('  Replica registered successfully.')
+except Exception as e:
+    print(f'  Registration failed: {e}')
+    sys.exit(1)
+"
+
+  # 7. Create replication rule STORM1 → STORM2
+  echo "=== Creating replication rule: STORM1 → STORM2 ==="
+  local rule_output rule_id
+  rule_output=$(rc_oidc rule add "$scope:$name" --copies 1 --rses STORM2 2>&1) || {
+    echo "  rule add failed: $rule_output"; return 1
+  }
+  rule_id=$(echo "$rule_output" | grep -v WARNING | grep -v "^$" | tail -1)
+  echo "  Rule ID: $rule_id"
+
+  # 8. Run daemons
+  run_daemons "$RUCIO_OIDC"
+
+  echo "=== Rule status ==="
+  rc_oidc rule show "$rule_id"
+}
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 delegate_proxy
 
-# userpass test — jdoe, rucio instance
+# # userpass test — jdoe, rucio instance, XRD1 → XRD2 via GSI proxy
 run_transfer_test userpass "$RUCIO"
 
-# OIDC test — jdoe2, rucio-oidc instance (token fetched inside rc_oidc)
-run_transfer_test oidc "$RUCIO_OIDC"
+# STORM OIDC test — rucio-oidc conveyor → fts-oidc (bearer token) → StoRM WebDAV
+# Full OIDC token path: allow_user_oidc_tokens=True triggers token forwarding
+run_storm_oidc_transfer_test

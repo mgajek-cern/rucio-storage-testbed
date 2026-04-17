@@ -59,12 +59,22 @@ echo "=== Accounts ==="
 ra account add --type USER --email jdoe@rucio jdoe || true
 ra identity add --type USERPASS --id jdoe --email jdoe@rucio --account jdoe --password secret || true
 
+ra_oidc account add --type SERVICE --email ddmlab@rucio ddmlab || true
 ra_oidc account add --type USER --email jdoe2@rucio jdoe2 || true
 
 # Give Keycloak a moment to finish importing the realm before token requests
 echo "  Verifying Keycloak realm token endpoint..."
+# Encode rucio-oidc:rucio-oidc-secret to base64 for Basic Auth
+AUTH_HEADER=$(echo -n "rucio-oidc:rucio-oidc-secret" | base64)
+
 for i in $(seq 1 12); do
-  code=$(docker exec "$RUCIO_OIDC" curl -s -o /dev/null -w '%{http_code}'     -X POST http://keycloak:8080/realms/rucio/protocol/openid-connect/token     -d "grant_type=password&client_id=rucio-oidc&client_secret=rucio-oidc-secret&username=jdoe2&password=secret"     2>/dev/null) || true
+  code=$(docker exec "$RUCIO_OIDC" curl -s -o /dev/null -w '%{http_code}' \
+    -X POST http://keycloak:8080/realms/rucio/protocol/openid-connect/token \
+    -H "Authorization: Basic $AUTH_HEADER" \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    -d "grant_type=password&username=jdoe2&password=secret" \
+    2>/dev/null) || true
+    
   [[ "$code" == "200" ]] && { echo "  Keycloak token endpoint ready"; break; }
   echo "  [$i] token endpoint HTTP $code — waiting..."
   sleep 5
@@ -164,6 +174,14 @@ for rse in STORM1 STORM2; do
   ra rse add "$rse" || true
   ra rse set-attribute --rse "$rse" --key fts --value "$FTS_OIDC"
   ra rse set-attribute --rse "$rse" --key oidc_support --value True
+
+  ra rse set-attribute --rse "$rse" --key auth_type --value OIDC
+
+  if [ "$rse" == "STORM1" ]; then
+    ra rse set-attribute --rse "$rse" --key audience --value "storm1"
+  else
+    ra rse set-attribute --rse "$rse" --key audience --value "storm2"
+  fi
 done
 
 ra rse add-protocol STORM1 \
@@ -222,12 +240,21 @@ for rse in STORM1 STORM2; do
   ra_oidc rse add "$rse" || true
   ra_oidc rse set-attribute --rse "$rse" --key fts --value "$FTS_OIDC"
   ra_oidc rse set-attribute --rse "$rse" --key oidc_support --value True
+  ra_oidc rse set-attribute --rse "$rse" --key verify_checksum --value False
+
+  ra_oidc rse set-attribute --rse "$rse" --key auth_type --value OIDC
+
+  if [ "$rse" == "STORM1" ]; then
+    ra_oidc rse set-attribute --rse "$rse" --key audience --value "storm1"
+  else
+    ra_oidc rse set-attribute --rse "$rse" --key audience --value "storm2"
+  fi
 done
 
 ra_oidc rse add-protocol STORM1 \
-  --scheme davs --hostname storm1 --port 8443 --prefix /data \
+  --scheme http --hostname storm1 --port 8085 --prefix /data \
   --impl rucio.rse.protocols.gfal.Default \
-  --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
+  --domain-json '{"wan":{"read":0,"write":0,"delete":0,"third_party_copy_read":1,"third_party_copy_write":0},"lan":{"read":0,"write":0,"delete":0}}'
 
 ra_oidc rse add-protocol STORM2 \
   --scheme davs --hostname storm2 --port 8443 --prefix /data \
