@@ -125,8 +125,8 @@ Keep `storm1` + `storm2` and add a `teapot` service alongside, registering a sep
 
 **References:**
 
-* StoRM WebDAV: https://github.com/italiangrid/storm-webdav
-* Teapot: https://github.com/interTwin-eu/teapot
-* Teapot installation guide: https://intertwin-eu.github.io/teapot/installation-guide/
-* Teapot configuration reference: https://github.com/interTwin-eu/teapot/blob/main/CONFIGURATION.md
+* StoRM WebDAV: <https://github.com/italiangrid/storm-webdav>
+* Teapot: <https://github.com/interTwin-eu/teapot>
+* Teapot installation guide: <https://intertwin-eu.github.io/teapot/installation-guide/>
+* Teapot configuration reference: <https://github.com/interTwin-eu/teapot/blob/main/CONFIGURATION.md>
 * Current testbed troubleshooting guide: `docs/troubleshooting-oidc-transfers.md`

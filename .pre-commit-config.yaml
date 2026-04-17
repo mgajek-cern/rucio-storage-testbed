@@ -1,0 +1,16 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        description: Validates k8s manifests, compose files, and storm configs.
+        args: [--allow-multiple-documents]
+      - id: check-json
+        description: Validates realm.json and idpsecrets.json.
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-shebang-scripts-are-executable
+        files: ^scripts/.*\.sh$

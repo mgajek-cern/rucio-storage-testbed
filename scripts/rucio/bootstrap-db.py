@@ -4,4 +4,4 @@ from rucio.db.sqla.util import build_database, create_base_vo, create_root_accou
 build_database()
 create_base_vo()
 create_root_account()
-print('DB bootstrap complete')
+print("DB bootstrap complete")

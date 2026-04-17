@@ -57,6 +57,7 @@ docker exec rucio-storage-testbed-fts-1 bash -c \
 | `DST` | `root://xrd2//rucio/fts-test-file` | Transfer destination |
 
 **Expected output:**
+
 ```
 === Step 1: connect and delegate ===
   DN:      /CN=fts
@@ -81,6 +82,7 @@ Tests FTS transfers to and from MinIO (`xrd1 → minio1`, `minio1 → xrd2`, `mi
 ```
 
 **Expected output:**
+
 ```
 === S3: xrd1 → MinIO1 ===
   [1] FINISHED
@@ -106,6 +108,7 @@ Tests FTS transfers to and from `rucio/test-webdav` containers (Apache + mod_dav
 ```
 
 **Expected output:**
+
 ```
 === WebDAV: xrd1 → WebDAV1 ===
   [1] FINISHED
@@ -135,6 +138,7 @@ curl -sk --cacert certs/rucio_ca.pem \
 ```
 
 **Expected output:**
+
 ```json
 {"vos":["rucio"],"delegation_id":"...","user_dn":"...","method":"oauth2",...}
 ```
@@ -154,6 +158,7 @@ Tests the full OIDC token flow: fts-oidc submits a TPC job to `storm1 → storm2
 This test uses `http://storm1:8085` (anonymous read, `anonymousReadEnabled=true`) as the TPC source to bypass CANL self-signed cert rejection on the pull side. The destination `davs://storm2:8443` uses bearer-token auth — the full OIDC write path is exercised.
 
 **Expected output:**
+
 ```
 === Reachability checks ===
   ✓ storm1 self: HTTP 200
@@ -193,6 +198,7 @@ Run once after `docker compose up -d`:
 ```
 
 This creates:
+
 - Accounts (`root`, `jdoe`) on `rucio`; (`root`, `ddmlab`, `jdoe2`) on `rucio-oidc`
 - Scopes (`test`, `user.jdoe`)
 - RSEs with FTS attributes, protocols, distances, and account limits:
@@ -304,6 +310,7 @@ XRootD TPC requires a proper RFC 3820 GSI proxy certificate. The curl-based dele
 ### XRootD gridmap entries
 
 Both xrd1 and xrd2 grant access to:
+
 - `/CN=fts` — FTS host cert (used by conveyor for job submission)
 - `/CN=fts/CN=proxy` — GSI proxy derived from FTS host cert (used during TPC)
 - `/CN=xrd` — XRootD server cert (used by xrd2 to authenticate to xrd1 during TPC pull)

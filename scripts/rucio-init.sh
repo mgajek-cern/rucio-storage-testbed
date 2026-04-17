@@ -74,7 +74,7 @@ for i in $(seq 1 12); do
     -H "Content-Type: application/x-www-form-urlencoded" \
     -d "grant_type=password&username=jdoe2&password=secret" \
     2>/dev/null) || true
-    
+
   [[ "$code" == "200" ]] && { echo "  Keycloak token endpoint ready"; break; }
   echo "  [$i] token endpoint HTTP $code — waiting..."
   sleep 5

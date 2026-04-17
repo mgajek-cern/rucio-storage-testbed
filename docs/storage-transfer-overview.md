@@ -13,6 +13,7 @@
 | XRootD (native root://) | anything | Depends — native TPC if supported, otherwise FTS fallback |
 
 **NOTE:**
+
 - Third-Party Copy (TPC) transfers data directly between storage endpoints, avoiding
   FTS in the data path. The **destination** storage initiates the transfer by pulling
   from the source. Not all storage systems support acting as a TPC destination.

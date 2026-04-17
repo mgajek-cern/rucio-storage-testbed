@@ -4,7 +4,7 @@
 #
 # WebDAV cert note: webdavcert.pem must have CN=webdav1 and CN=webdav2
 # to match each container's hostname for TLS SNI validation from inside the
-# Docker network. 
+# Docker network.
 
 set -euo pipefail
 
@@ -153,9 +153,9 @@ echo "  Job: $JOB"
 poll_job "$JOB"
 
 # WebDAV <-> WebDAV transfers are currently disabled.
-# LIMITATION: The 'rucio/test-webdav' image (Apache mod_dav) does not support 
-# the 'Source:' header required for true HTTP-TPC. 
-# Without a TPC-capable server (like StoRM), these tests will fail or 
+# LIMITATION: The 'rucio/test-webdav' image (Apache mod_dav) does not support
+# the 'Source:' header required for true HTTP-TPC.
+# Without a TPC-capable server (like StoRM), these tests will fail or
 # fallback to streaming, which does not exercise the TPC logic.
 # echo "=== WebDAV: WebDAV1 → WebDAV2 (HTTP TPC) ==="
 # JOB=$(submit_job \

@@ -42,19 +42,36 @@ from requests.packages.urllib3 import disable_warnings  # pylint: disable=import
 
 from rucio.common.cache import MemcacheRegion
 from rucio.common.checksum import PREFERRED_CHECKSUM
-from rucio.common.config import config_get, config_get_bool, config_get_int, config_get_list
+from rucio.common.config import (
+    config_get,
+    config_get_bool,
+    config_get_int,
+    config_get_list,
+)
 from rucio.common.constants import FTS_COMPLETE_STATE, FTS_JOB_TYPE, FTS_STATE, RseAttr
-from rucio.common.exception import DuplicateFileTransferSubmission, TransferToolTimeout, TransferToolWrongAnswer
+from rucio.common.exception import (
+    DuplicateFileTransferSubmission,
+    TransferToolTimeout,
+    TransferToolWrongAnswer,
+)
 from rucio.common.policy import get_policy
 from rucio.common.stopwatch import Stopwatch
 from rucio.common.utils import APIEncoder, chunks, deep_merge_dict
 from rucio.core.monitor import MetricManager
 from rucio.core.oidc import request_token
 from rucio.core.request import get_source_rse, get_transfer_error
-from rucio.core.rse import determine_audience_for_rse, determine_scope_for_rse, get_rse_supported_checksums_from_attributes
+from rucio.core.rse import (
+    determine_audience_for_rse,
+    determine_scope_for_rse,
+    get_rse_supported_checksums_from_attributes,
+)
 from rucio.db.sqla.constants import RequestState
 from rucio.transfertool.fts3_plugins import FTS3TapeMetadataPlugin
-from rucio.transfertool.transfertool import TransferStatusReport, Transfertool, TransferToolBuilder
+from rucio.transfertool.transfertool import (
+    TransferStatusReport,
+    Transfertool,
+    TransferToolBuilder,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -71,28 +88,62 @@ disable_warnings()
 REGION_SHORT = MemcacheRegion(expiration_time=900)
 METRICS = MetricManager(module=__name__)
 
-SUBMISSION_COUNTER = METRICS.counter(name='{host}.submission.{state}',
-                                     documentation='Number of transfers submitted', labelnames=('state', 'host'))
-CANCEL_COUNTER = METRICS.counter(name='{host}.cancel.{state}',
-                                 documentation='Number of cancelled transfers', labelnames=('state', 'host'))
-UPDATE_PRIORITY_COUNTER = METRICS.counter(name='{host}.update_priority.{state}',
-                                          documentation='Number of priority updates', labelnames=('state', 'host'))
-QUERY_COUNTER = METRICS.counter(name='{host}.query.{state}',
-                                documentation='Number of queried transfers', labelnames=('state', 'host'))
-WHOAMI_COUNTER = METRICS.counter(name='{host}.whoami.{state}',
-                                 documentation='Number of whoami requests', labelnames=('state', 'host'))
-VERSION_COUNTER = METRICS.counter(name='{host}.version.{state}',
-                                  documentation='Number of version requests', labelnames=('state', 'host'))
-BULK_QUERY_COUNTER = METRICS.counter(name='{host}.bulk_query.{state}',
-                                     documentation='Number of bulk queries', labelnames=('state', 'host'))
-QUERY_DETAILS_COUNTER = METRICS.counter(name='{host}.query_details.{state}',
-                                        documentation='Number of detailed status queries', labelnames=('state', 'host'))
+SUBMISSION_COUNTER = METRICS.counter(
+    name="{host}.submission.{state}",
+    documentation="Number of transfers submitted",
+    labelnames=("state", "host"),
+)
+CANCEL_COUNTER = METRICS.counter(
+    name="{host}.cancel.{state}",
+    documentation="Number of cancelled transfers",
+    labelnames=("state", "host"),
+)
+UPDATE_PRIORITY_COUNTER = METRICS.counter(
+    name="{host}.update_priority.{state}",
+    documentation="Number of priority updates",
+    labelnames=("state", "host"),
+)
+QUERY_COUNTER = METRICS.counter(
+    name="{host}.query.{state}",
+    documentation="Number of queried transfers",
+    labelnames=("state", "host"),
+)
+WHOAMI_COUNTER = METRICS.counter(
+    name="{host}.whoami.{state}",
+    documentation="Number of whoami requests",
+    labelnames=("state", "host"),
+)
+VERSION_COUNTER = METRICS.counter(
+    name="{host}.version.{state}",
+    documentation="Number of version requests",
+    labelnames=("state", "host"),
+)
+BULK_QUERY_COUNTER = METRICS.counter(
+    name="{host}.bulk_query.{state}",
+    documentation="Number of bulk queries",
+    labelnames=("state", "host"),
+)
+QUERY_DETAILS_COUNTER = METRICS.counter(
+    name="{host}.query_details.{state}",
+    documentation="Number of detailed status queries",
+    labelnames=("state", "host"),
+)
 
-VO_CERTS_PATH = config_get('conveyor', 'vo_certs_path', False, None)
+VO_CERTS_PATH = config_get("conveyor", "vo_certs_path", False, None)
 
 # https://fts3-docs.web.cern.ch/fts3-docs/docs/state_machine.html
-FINAL_FTS_JOB_STATES = (FTS_STATE.FAILED, FTS_STATE.CANCELED, FTS_STATE.FINISHED, FTS_STATE.FINISHEDDIRTY)
-FINAL_FTS_FILE_STATES = (FTS_STATE.FAILED, FTS_STATE.CANCELED, FTS_STATE.FINISHED, FTS_STATE.NOT_USED)
+FINAL_FTS_JOB_STATES = (
+    FTS_STATE.FAILED,
+    FTS_STATE.CANCELED,
+    FTS_STATE.FINISHED,
+    FTS_STATE.FINISHEDDIRTY,
+)
+FINAL_FTS_FILE_STATES = (
+    FTS_STATE.FAILED,
+    FTS_STATE.CANCELED,
+    FTS_STATE.FINISHED,
+    FTS_STATE.NOT_USED,
+)
 
 # In a multi-hop transfer, we must compute a checksum validation strategy valid for the whole path.
 # This state-machine defines how strategies of hops are merged into a path-wide strategy.
@@ -100,37 +151,41 @@ FINAL_FTS_FILE_STATES = (FTS_STATE.FAILED, FTS_STATE.CANCELED, FTS_STATE.FINISHE
 # supports validation at destination, the strategy for the whole path MUST be "none". Otherwise,
 # transfers will fail when FTS will try to validate the checksum.
 PATH_CHECKSUM_VALIDATION_STRATEGY: dict[tuple[str, str], str] = {
-    ('both', 'both'): 'both',
-    ('both', 'target'): 'target',
-    ('both', 'source'): 'source',
-    ('both', 'none'): 'none',
-    ('target', 'both'): 'target',
-    ('target', 'target'): 'target',
-    ('target', 'source'): 'none',
-    ('target', 'none'): 'none',
-    ('source', 'both'): 'source',
-    ('source', 'target'): 'none',
-    ('source', 'source'): 'source',
-    ('source', 'none'): 'none',
-    ('none', 'both'): 'none',
-    ('none', 'target'): 'none',
-    ('none', 'source'): 'none',
-    ('none', 'none'): 'none',
+    ("both", "both"): "both",
+    ("both", "target"): "target",
+    ("both", "source"): "source",
+    ("both", "none"): "none",
+    ("target", "both"): "target",
+    ("target", "target"): "target",
+    ("target", "source"): "none",
+    ("target", "none"): "none",
+    ("source", "both"): "source",
+    ("source", "target"): "none",
+    ("source", "source"): "source",
+    ("source", "none"): "none",
+    ("none", "both"): "none",
+    ("none", "target"): "none",
+    ("none", "source"): "none",
+    ("none", "none"): "none",
 }
 
 _SCITAGS_NEXT_REFRESH = datetime.datetime.utcnow()
 _SCITAGS_EXP_ID = None
 _SCITAGS_ACTIVITY_IDS = {}
 
-FTS_FILE_EXISTS_ERROR_MSG = 'Destination file exists and is on tape'  # used in FTS  >= 3.12.12
-FTS_FILE_EXISTS_ERROR_MSG_LEGACY = 'Destination file exists and overwrite is not enabled'  # Error message used in FTS < 3.12.12, checked in Rucio for backwards compatibility
+FTS_FILE_EXISTS_ERROR_MSG = (
+    "Destination file exists and is on tape"  # used in FTS  >= 3.12.12
+)
+FTS_FILE_EXISTS_ERROR_MSG_LEGACY = "Destination file exists and overwrite is not enabled"  # Error message used in FTS < 3.12.12, checked in Rucio for backwards compatibility
 
 
-def _scitags_ids(logger: "LoggerFunction" = logging.log) -> "tuple[int | None, dict[str, int]]":
+def _scitags_ids(
+    logger: "LoggerFunction" = logging.log,
+) -> "tuple[int | None, dict[str, int]]":
     """
     Re-fetch if needed and return the scitags ids
     """
-    enabled = config_get_bool('packet-marking', 'enabled', default=False)
+    enabled = config_get_bool("packet-marking", "enabled", default=False)
     if not enabled:
         return None, {}
 
@@ -139,10 +194,16 @@ def _scitags_ids(logger: "LoggerFunction" = logging.log) -> "tuple[int | None, d
     global _SCITAGS_EXP_ID
     global _SCITAGS_NEXT_REFRESH
     if _SCITAGS_NEXT_REFRESH < now:
-        exp_name = config_get('packet-marking', 'exp_name', default='')
-        fetch_url = config_get('packet-marking', 'fetch_url', default='https://www.scitags.org/api.json')
-        fetch_interval = config_get_int('packet-marking', 'fetch_interval', default=int(datetime.timedelta(hours=48).total_seconds()))
-        fetch_timeout = config_get_int('packet-marking', 'fetch_timeout', default=5)
+        exp_name = config_get("packet-marking", "exp_name", default="")
+        fetch_url = config_get(
+            "packet-marking", "fetch_url", default="https://www.scitags.org/api.json"
+        )
+        fetch_interval = config_get_int(
+            "packet-marking",
+            "fetch_interval",
+            default=int(datetime.timedelta(hours=48).total_seconds()),
+        )
+        fetch_timeout = config_get_int("packet-marking", "fetch_timeout", default=5)
 
         _SCITAGS_NEXT_REFRESH = now + datetime.timedelta(seconds=fetch_interval)
 
@@ -154,22 +215,28 @@ def _scitags_ids(logger: "LoggerFunction" = logging.log) -> "tuple[int | None, d
                 result = requests.get(fetch_url, timeout=fetch_timeout)
                 if result and result.status_code == 200:
                     marks = result.json()
-                    for experiment in marks.get('experiments', []):
-                        if experiment.get('expName') == exp_name:
-                            exp_id = experiment.get('expId')
-                            for activity_dict in experiment.get('activities', []):
-                                activity_name = activity_dict.get('activityName')
-                                activity_id = activity_dict.get('activityId')
+                    for experiment in marks.get("experiments", []):
+                        if experiment.get("expName") == exp_name:
+                            exp_id = experiment.get("expId")
+                            for activity_dict in experiment.get("activities", []):
+                                activity_name = activity_dict.get("activityName")
+                                activity_id = activity_dict.get("activityId")
                                 if activity_name and activity_id:
                                     activity_ids[activity_name] = int(activity_id)
                             break
             except (requests.exceptions.RequestException, TypeError, ValueError):
                 had_exception = True
-                logger(logging.WARNING, 'Failed to fetch the scitags markings', exc_info=True)
+                logger(
+                    logging.WARNING,
+                    "Failed to fetch the scitags markings",
+                    exc_info=True,
+                )
 
             if had_exception:
                 # Retry quicker after fetch errors
-                _SCITAGS_NEXT_REFRESH = min(_SCITAGS_NEXT_REFRESH, now + datetime.timedelta(minutes=5))
+                _SCITAGS_NEXT_REFRESH = min(
+                    _SCITAGS_NEXT_REFRESH, now + datetime.timedelta(minutes=5)
+                )
             else:
                 _SCITAGS_EXP_ID = exp_id
                 _SCITAGS_ACTIVITY_IDS = activity_ids
@@ -180,7 +247,7 @@ def _scitags_ids(logger: "LoggerFunction" = logging.log) -> "tuple[int | None, d
 def _pick_cert_file(vo: Optional[str]) -> Optional[str]:
     cert = None
     if vo:
-        vo_cert = config_get('vo_certs', vo, False, None)
+        vo_cert = config_get("vo_certs", vo, False, None)
         if vo_cert:
             cert = vo_cert
         elif VO_CERTS_PATH:
@@ -188,7 +255,7 @@ def _pick_cert_file(vo: Optional[str]) -> Optional[str]:
             if vo_cert.exists():
                 cert = str(vo_cert)
     if not cert:
-        usercert = config_get('conveyor', 'usercert', False, None)
+        usercert = config_get("conveyor", "usercert", False, None)
         if usercert:
             cert = usercert
     return cert
@@ -199,24 +266,28 @@ def _configured_source_strategy(activity: str, logger: "LoggerFunction") -> str:
     Retrieve from the configuration the source selection strategy for the given activity
     """
     try:
-        default_source_strategy = config_get(section='conveyor', option='default-source-strategy')
+        default_source_strategy = config_get(
+            section="conveyor", option="default-source-strategy"
+        )
     except (NoOptionError, NoSectionError, RuntimeError):
-        default_source_strategy = 'orderly'
+        default_source_strategy = "orderly"
 
     try:
-        activity_source_strategy = config_get(section='conveyor', option='activity-source-strategy')
+        activity_source_strategy = config_get(
+            section="conveyor", option="activity-source-strategy"
+        )
         activity_source_strategy = loads(activity_source_strategy)
     except (NoOptionError, NoSectionError, RuntimeError):
         activity_source_strategy = {}
     except ValueError:
-        logger(logging.WARNING, 'activity_source_strategy not properly defined')
+        logger(logging.WARNING, "activity_source_strategy not properly defined")
         activity_source_strategy = {}
 
     return activity_source_strategy.get(str(activity), default_source_strategy)
 
 
 def _available_checksums(
-        transfer: "DirectTransfer",
+    transfer: "DirectTransfer",
 ) -> tuple[set[str], set[str]]:
     """
     Get checksums which can be used for file validation on the source and the destination RSE
@@ -237,8 +308,8 @@ def _available_checksums(
 
 
 def _hop_checksum_validation_strategy(
-        transfer: "DirectTransfer",
-        logger: "LoggerFunction",
+    transfer: "DirectTransfer",
+    logger: "LoggerFunction",
 ) -> tuple[str, set[str]]:
     """
     Compute the checksum validation strategy (none, source, destination or both) depending
@@ -248,40 +319,51 @@ def _hop_checksum_validation_strategy(
     intersection = src_checksums.intersection(dst_checksums)
 
     if intersection:
-        strategy, possible_checksums = 'both', intersection
+        strategy, possible_checksums = "both", intersection
     elif dst_checksums:
         # The prioritization of destination over source here is desired, not random
-        logger(logging.INFO, f'No common checksum method for {transfer}. Verifying destination only.')
-        strategy, possible_checksums = 'target', dst_checksums
+        logger(
+            logging.INFO,
+            f"No common checksum method for {transfer}. Verifying destination only.",
+        )
+        strategy, possible_checksums = "target", dst_checksums
     elif src_checksums:
-        logger(logging.INFO, f'No common checksum method for {transfer}. Verifying source only.')
-        strategy, possible_checksums = 'source', src_checksums
+        logger(
+            logging.INFO,
+            f"No common checksum method for {transfer}. Verifying source only.",
+        )
+        strategy, possible_checksums = "source", src_checksums
     else:
-        logger(logging.INFO, f'No common checksum method for {transfer}. Not verifying source nor destination.')
-        strategy, possible_checksums = 'none', set()
+        logger(
+            logging.INFO,
+            f"No common checksum method for {transfer}. Not verifying source nor destination.",
+        )
+        strategy, possible_checksums = "none", set()
     return strategy, possible_checksums
 
 
 def _path_checksum_validation_strategy(
-        transfer_path: "list[DirectTransfer]",
-        logger: "LoggerFunction",
+    transfer_path: "list[DirectTransfer]",
+    logger: "LoggerFunction",
 ) -> str:
     """
     Compute the checksum validation strategy for the whole transfer path.
     """
 
-    path_strategy = 'both'
+    path_strategy = "both"
     for transfer_hop in transfer_path:
         hop_strategy, _ = _hop_checksum_validation_strategy(transfer_hop, logger)
 
-        path_strategy = PATH_CHECKSUM_VALIDATION_STRATEGY.get((path_strategy, hop_strategy), 'none')
+        path_strategy = PATH_CHECKSUM_VALIDATION_STRATEGY.get(
+            (path_strategy, hop_strategy), "none"
+        )
 
     return path_strategy
 
 
 def _pick_fts_checksum(
-        transfer: "DirectTransfer",
-        path_strategy: "str",
+    transfer: "DirectTransfer",
+    path_strategy: "str",
 ) -> Optional[str]:
     """
     Pick the checksum to use for validating file integrity on this particular transfer hop.
@@ -292,22 +374,22 @@ def _pick_fts_checksum(
     """
     src_checksums, dst_checksums = _available_checksums(transfer)
 
-    if path_strategy == 'both':
+    if path_strategy == "both":
         possible_checksums = src_checksums.intersection(dst_checksums)
-    elif path_strategy == 'target':
+    elif path_strategy == "target":
         possible_checksums = dst_checksums
-    elif path_strategy == 'source':
+    elif path_strategy == "source":
         possible_checksums = src_checksums
     else:
         possible_checksums = set()
 
     checksum_to_use = None
     for checksum_name in possible_checksums:
-        checksum_value = getattr(transfer.rws, checksum_name, '')
+        checksum_value = getattr(transfer.rws, checksum_name, "")
         if not checksum_value:
             continue
 
-        checksum_to_use = '%s:%s' % (checksum_name.upper(), checksum_value)
+        checksum_to_use = "%s:%s" % (checksum_name.upper(), checksum_value)
         if checksum_name == PREFERRED_CHECKSUM:
             break
 
@@ -318,7 +400,7 @@ def _pick_fts_checksum(
 # Upstream allows only 'davs'. We add 'http'/'https' so that StoRM WebDAV
 # transfers using http:// source URLs (CANL-bypass workaround) still get
 # per-file source_tokens/destination_tokens attached during FTS submission.
-_TOKEN_CAPABLE_SCHEMES = frozenset({'davs', 'https', 'http'})
+_TOKEN_CAPABLE_SCHEMES = frozenset({"davs", "https", "http"})
 
 
 def _use_tokens(transfer_hop: "DirectTransfer") -> bool:
@@ -328,19 +410,21 @@ def _use_tokens(transfer_hop: "DirectTransfer") -> bool:
     and the protocol being used must be WebDAV or HTTP(S).
     """
     for endpoint in [*transfer_hop.sources, transfer_hop.dst]:
-        if (endpoint.rse.attributes.get(RseAttr.OIDC_SUPPORT) is not True
-                or endpoint.scheme not in _TOKEN_CAPABLE_SCHEMES):
+        if (
+            endpoint.rse.attributes.get(RseAttr.OIDC_SUPPORT) is not True
+            or endpoint.scheme not in _TOKEN_CAPABLE_SCHEMES
+        ):
             return False
     return True
 
 
 def build_job_params(
-        transfer_path: list["DirectTransfer"],
-        bring_online: Optional[int] = None,
-        default_lifetime: Optional[int] = None,
-        archive_timeout_override: Optional[int] = None,
-        max_time_in_queue: Optional[dict] = None,
-        logger: "LoggerFunction" = logging.log
+    transfer_path: list["DirectTransfer"],
+    bring_online: Optional[int] = None,
+    default_lifetime: Optional[int] = None,
+    archive_timeout_override: Optional[int] = None,
+    max_time_in_queue: Optional[dict] = None,
+    logger: "LoggerFunction" = logging.log,
 ) -> dict[str, Any]:
     """
     Prepare the job parameters which will be passed to FTS transfertool
@@ -367,87 +451,113 @@ def build_job_params(
     if last_hop.dst.rse.is_tape():
         # FTS v3.12.12 introduced a new boolean parameter "overwrite_when_only_on_disk" that controls if the file can be overwritten
         # in TAPE enabled RSEs ONLY IF the file is on the disk buffer and not yet committed to tape media.
-        overwrite_when_only_on_disk = last_hop.dst.rse.attributes.get('overwrite_when_only_on_disk', False)
-        overwrite = False if overwrite_when_only_on_disk else last_hop.dst.rse.attributes.get('overwrite', False)
+        overwrite_when_only_on_disk = last_hop.dst.rse.attributes.get(
+            "overwrite_when_only_on_disk", False
+        )
+        overwrite = (
+            False
+            if overwrite_when_only_on_disk
+            else last_hop.dst.rse.attributes.get("overwrite", False)
+        )
 
-    overwrite_corrupted_files = last_hop.rws.attributes.get('overwrite', False)
+    overwrite_corrupted_files = last_hop.rws.attributes.get("overwrite", False)
     if overwrite_corrupted_files:
         overwrite = True  # both for DISK and TAPE
 
-    logger(logging.DEBUG, 'RSE:%s Is it Tape? %s overwrite_when_only_on_disk:%s overwrite:%s overwrite_corrupted_files=%s' % (
-        last_hop.dst.rse.name,
-        last_hop.dst.rse.is_tape(),
-        overwrite_when_only_on_disk,
-        overwrite,
-        overwrite_corrupted_files))
+    logger(
+        logging.DEBUG,
+        "RSE:%s Is it Tape? %s overwrite_when_only_on_disk:%s overwrite:%s overwrite_corrupted_files=%s"
+        % (
+            last_hop.dst.rse.name,
+            last_hop.dst.rse.is_tape(),
+            overwrite_when_only_on_disk,
+            overwrite,
+            overwrite_corrupted_files,
+        ),
+    )
 
-    logger(logging.DEBUG, 'RSE attributes are: %s' % (last_hop.dst.rse.attributes))
+    logger(logging.DEBUG, "RSE attributes are: %s" % (last_hop.dst.rse.attributes))
 
     # Get dest space token
-    dest_protocol = last_hop.protocol_factory.protocol(last_hop.dst.rse, last_hop.dst.scheme, last_hop.operation_dest)
+    dest_protocol = last_hop.protocol_factory.protocol(
+        last_hop.dst.rse, last_hop.dst.scheme, last_hop.operation_dest
+    )
     dest_spacetoken = None
-    if dest_protocol.attributes and 'extended_attributes' in dest_protocol.attributes and \
-            dest_protocol.attributes['extended_attributes'] and 'space_token' in dest_protocol.attributes['extended_attributes']:
-        dest_spacetoken = dest_protocol.attributes['extended_attributes']['space_token']
+    if (
+        dest_protocol.attributes
+        and "extended_attributes" in dest_protocol.attributes
+        and dest_protocol.attributes["extended_attributes"]
+        and "space_token" in dest_protocol.attributes["extended_attributes"]
+    ):
+        dest_spacetoken = dest_protocol.attributes["extended_attributes"]["space_token"]
 
     strict_copy = last_hop.dst.rse.attributes.get(RseAttr.STRICT_COPY, False)
     archive_timeout = last_hop.dst.rse.attributes.get(RseAttr.ARCHIVE_TIMEOUT, None)
 
-    job_params = {'account': last_hop.rws.account,
-                  'verify_checksum': _path_checksum_validation_strategy(transfer_path, logger=logger),
-                  'copy_pin_lifetime': last_hop.rws.attributes.get('lifetime', default_lifetime),
-                  'bring_online': bring_online_local,
-                  'job_metadata': {
-                      'issuer': 'rucio',
-                      'multi_sources': False,
-                      'overwrite_when_only_on_disk': overwrite_when_only_on_disk,
-                  },
-                  'overwrite': overwrite,
-                  'overwrite_when_only_on_disk': overwrite_when_only_on_disk,
-                  'priority': last_hop.rws.priority,
-                  'unmanaged_tokens': True}
+    job_params = {
+        "account": last_hop.rws.account,
+        "verify_checksum": _path_checksum_validation_strategy(
+            transfer_path, logger=logger
+        ),
+        "copy_pin_lifetime": last_hop.rws.attributes.get("lifetime", default_lifetime),
+        "bring_online": bring_online_local,
+        "job_metadata": {
+            "issuer": "rucio",
+            "multi_sources": False,
+            "overwrite_when_only_on_disk": overwrite_when_only_on_disk,
+        },
+        "overwrite": overwrite,
+        "overwrite_when_only_on_disk": overwrite_when_only_on_disk,
+        "priority": last_hop.rws.priority,
+        "unmanaged_tokens": True,
+    }
 
     if len(transfer_path) > 1:
-        job_params['multihop'] = True
-        job_params['job_metadata']['multihop'] = True
+        job_params["multihop"] = True
+        job_params["job_metadata"]["multihop"] = True
     elif len(last_hop.sources) > 1:
-        job_params['job_metadata']['multi_sources'] = True
+        job_params["job_metadata"]["multi_sources"] = True
     if strict_copy:
-        job_params['strict_copy'] = strict_copy
+        job_params["strict_copy"] = strict_copy
     if dest_spacetoken:
-        job_params['spacetoken'] = dest_spacetoken
-    if (last_hop.dst.rse.attributes.get(RseAttr.USE_IPV4, False)
-            or any(src.rse.attributes.get(RseAttr.USE_IPV4, False) for src in last_hop.sources)):
-        job_params['ipv4'] = True
-        job_params['ipv6'] = False
+        job_params["spacetoken"] = dest_spacetoken
+    if last_hop.dst.rse.attributes.get(RseAttr.USE_IPV4, False) or any(
+        src.rse.attributes.get(RseAttr.USE_IPV4, False) for src in last_hop.sources
+    ):
+        job_params["ipv4"] = True
+        job_params["ipv6"] = False
 
     # assume s3alternate True (path-style URL S3 RSEs)
-    job_params['s3alternate'] = True
+    job_params["s3alternate"] = True
     src_rse_s3_url_style = first_hop.src.rse.attributes.get(RseAttr.S3_URL_STYLE, None)
     if src_rse_s3_url_style == "host":
-        job_params['s3alternate'] = False
+        job_params["s3alternate"] = False
     dst_rse_s3_url_style = last_hop.dst.rse.attributes.get(RseAttr.S3_URL_STYLE, None)
     if dst_rse_s3_url_style == "host":
-        job_params['s3alternate'] = False
+        job_params["s3alternate"] = False
 
     if archive_timeout and last_hop.dst.rse.is_tape():
         try:
             archive_timeout = int(archive_timeout)
             if archive_timeout_override is None:
-                job_params['archive_timeout'] = archive_timeout
+                job_params["archive_timeout"] = archive_timeout
             elif archive_timeout_override != 0:
-                job_params['archive_timeout'] = archive_timeout_override
+                job_params["archive_timeout"] = archive_timeout_override
             # FTS only supports dst_file metadata if archive_timeout is set
-            job_params['dst_file_report'] = True
-            logger(logging.DEBUG, 'Added archive timeout to transfer.')
+            job_params["dst_file_report"] = True
+            logger(logging.DEBUG, "Added archive timeout to transfer.")
         except ValueError:
-            logger(logging.WARNING, 'Could not set archive_timeout for %s. Must be integer.', last_hop)
+            logger(
+                logging.WARNING,
+                "Could not set archive_timeout for %s. Must be integer.",
+                last_hop,
+            )
             pass
     if max_time_in_queue:
         if last_hop.rws.activity in max_time_in_queue:
-            job_params['max_time_in_queue'] = max_time_in_queue[last_hop.rws.activity]
-        elif 'default' in max_time_in_queue:
-            job_params['max_time_in_queue'] = max_time_in_queue['default']
+            job_params["max_time_in_queue"] = max_time_in_queue[last_hop.rws.activity]
+        elif "default" in max_time_in_queue:
+            job_params["max_time_in_queue"] = max_time_in_queue["default"]
 
     # direct transfers, is not multihop
     if len(transfer_path) == 1:
@@ -455,26 +565,30 @@ def build_job_params(
 
     else:
         # Set `overwrite_hop` to `True` only if all hops allow it
-        overwrite_hop = all(transfer_hop.rws.attributes.get('overwrite', True) for transfer_hop in transfer_path[:-1])
-        job_params['overwrite'] = overwrite_hop and job_params['overwrite']
+        overwrite_hop = all(
+            transfer_hop.rws.attributes.get("overwrite", True)
+            for transfer_hop in transfer_path[:-1]
+        )
+        job_params["overwrite"] = overwrite_hop and job_params["overwrite"]
 
-    if not job_params['overwrite'] and overwrite_hop:
-        job_params['overwrite_hop'] = overwrite_hop
+    if not job_params["overwrite"] and overwrite_hop:
+        job_params["overwrite_hop"] = overwrite_hop
 
-    logger(logging.DEBUG, 'Job parameters are : %s' % (job_params))
+    logger(logging.DEBUG, "Job parameters are : %s" % (job_params))
     return job_params
 
 
 def bulk_group_transfers(
-        transfer_paths: "Iterable[list[DirectTransfer]]",
-        policy: str = 'rule',
-        group_bulk: int = 200,
-        source_strategy: Optional[str] = None,
-        max_time_in_queue: Optional[dict] = None,
-        logger: "LoggerFunction" = logging.log,
-        archive_timeout_override: Optional[int] = None,
-        bring_online: Optional[int] = None,
-        default_lifetime: Optional[int] = None) -> list[dict[str, Any]]:
+    transfer_paths: "Iterable[list[DirectTransfer]]",
+    policy: str = "rule",
+    group_bulk: int = 200,
+    source_strategy: Optional[str] = None,
+    max_time_in_queue: Optional[dict] = None,
+    logger: "LoggerFunction" = logging.log,
+    archive_timeout_override: Optional[int] = None,
+    bring_online: Optional[int] = None,
+    default_lifetime: Optional[int] = None,
+) -> list[dict[str, Any]]:
     """
     Group transfers in bulk based on certain criteria
     """
@@ -489,70 +603,92 @@ def bulk_group_transfers(
             default_lifetime=default_lifetime,
             archive_timeout_override=archive_timeout_override,
             max_time_in_queue=max_time_in_queue,
-            logger=logger
+            logger=logger,
         )
-        logger(logging.DEBUG, 'bulk_group_transfers: Job parameters are: %s' % (job_params))
-        if job_params['job_metadata'].get('multi_sources') or job_params['job_metadata'].get('multihop'):
-            fts_jobs.append({'transfers': transfer_path[0:group_bulk], 'job_params': job_params})
+        logger(
+            logging.DEBUG, "bulk_group_transfers: Job parameters are: %s" % (job_params)
+        )
+        if job_params["job_metadata"].get("multi_sources") or job_params[
+            "job_metadata"
+        ].get("multihop"):
+            fts_jobs.append(
+                {"transfers": transfer_path[0:group_bulk], "job_params": job_params}
+            )
         else:
             transfer = transfer_path[0]
             group_key_segments = []
 
             group_key_segments += [
-                job_params['verify_checksum'],
-                job_params.get('spacetoken'),
-                job_params['copy_pin_lifetime'],
-                job_params['bring_online'],
-                str(job_params['job_metadata']),
-                job_params['overwrite'],
-                job_params['priority'],
-                job_params.get('max_time_in_queue')
+                job_params["verify_checksum"],
+                job_params.get("spacetoken"),
+                job_params["copy_pin_lifetime"],
+                job_params["bring_online"],
+                str(job_params["job_metadata"]),
+                job_params["overwrite"],
+                job_params["priority"],
+                job_params.get("max_time_in_queue"),
             ]
 
             group_key_segments += [_use_tokens(transfer)]
 
-            if policy == 'rule':
+            if policy == "rule":
                 group_key_segments += [transfer.rws.rule_id]
-            elif policy == 'dest':
+            elif policy == "dest":
                 group_key_segments += [transfer.dst.rse.name]
-            elif policy == 'src_dest':
+            elif policy == "src_dest":
                 group_key_segments += [transfer.src.rse.name, transfer.dst.rse.name]
-            elif policy == 'rule_src_dest':
-                group_key_segments += [transfer.rws.rule_id, transfer.src.rse.name, transfer.dst.rse.name]
-            elif policy == 'activity_dest':
+            elif policy == "rule_src_dest":
+                group_key_segments += [
+                    transfer.rws.rule_id,
+                    transfer.src.rse.name,
+                    transfer.dst.rse.name,
+                ]
+            elif policy == "activity_dest":
                 group_key_segments += [transfer.rws.activity, transfer.dst.rse.name]
-            elif policy == 'activity_src_dest':
-                group_key_segments += [transfer.rws.activity, transfer.src.rse.name, transfer.dst.rse.name]
+            elif policy == "activity_src_dest":
+                group_key_segments += [
+                    transfer.rws.activity,
+                    transfer.src.rse.name,
+                    transfer.dst.rse.name,
+                ]
 
             group_key = tuple(group_key_segments)
             if group_key not in grouped_transfers:
-                grouped_transfers[group_key] = {'transfers': [], 'job_params': job_params}
-            grouped_transfers[group_key]['transfers'].append(transfer)
+                grouped_transfers[group_key] = {
+                    "transfers": [],
+                    "job_params": job_params,
+                }
+            grouped_transfers[group_key]["transfers"].append(transfer)
 
     for group in grouped_transfers.values():
-        job_params = group['job_params']
-        logger(logging.DEBUG, 'bulk_group_transfers: grouped_transfers.values(): Job parameters are: %s' % (job_params))
-        for transfer_paths in chunks(group['transfers'], group_bulk):
-            fts_jobs.append({'transfers': transfer_paths, 'job_params': job_params})
+        job_params = group["job_params"]
+        logger(
+            logging.DEBUG,
+            "bulk_group_transfers: grouped_transfers.values(): Job parameters are: %s"
+            % (job_params),
+        )
+        for transfer_paths in chunks(group["transfers"], group_bulk):
+            fts_jobs.append({"transfers": transfer_paths, "job_params": job_params})
 
     return fts_jobs
 
 
 class Fts3TransferStatusReport(TransferStatusReport):
-
     supported_db_fields = [
-        'state',
-        'external_id',
-        'started_at',
-        'transferred_at',
-        'staging_started_at',
-        'staging_finished_at',
-        'source_rse_id',
-        'err_msg',
-        'attributes',
+        "state",
+        "external_id",
+        "started_at",
+        "transferred_at",
+        "staging_started_at",
+        "staging_finished_at",
+        "source_rse_id",
+        "err_msg",
+        "attributes",
     ]
 
-    def __init__(self, external_host: str, request_id: str, request: Optional[dict] = None):
+    def __init__(
+        self, external_host: str, request_id: str, request: Optional[dict] = None
+    ):
         super().__init__(request_id, request=request)
         self.external_host = external_host
 
@@ -575,120 +711,190 @@ class Fts3TransferStatusReport(TransferStatusReport):
         self.attributes = None
 
     def __str__(self):
-        return f'Transfer {self._transfer_id} of {self._file_metadata["scope"]}:{self._file_metadata["name"]} ' \
-               f'{self._file_metadata["src_rse"]} --({self._file_metadata["request_id"]})-> {self._file_metadata["dst_rse"]}'
+        return (
+            f'Transfer {self._transfer_id} of {self._file_metadata["scope"]}:{self._file_metadata["name"]} '
+            f'{self._file_metadata["src_rse"]} --({self._file_metadata["request_id"]})-> {self._file_metadata["dst_rse"]}'
+        )
 
-    def initialize(self, session: "Session", logger: "LoggerFunction" = logging.log) -> None:
-        raise NotImplementedError(f"{self.__class__.__name__} is abstract and shouldn't be used directly")
+    def initialize(
+        self, session: "Session", logger: "LoggerFunction" = logging.log
+    ) -> None:
+        raise NotImplementedError(
+            f"{self.__class__.__name__} is abstract and shouldn't be used directly"
+        )
 
-    def get_monitor_msg_fields(self, session: "Session", logger: "LoggerFunction" = logging.log) -> dict[str, Any]:
+    def get_monitor_msg_fields(
+        self, session: "Session", logger: "LoggerFunction" = logging.log
+    ) -> dict[str, Any]:
         self.ensure_initialized(session, logger)
         fields = {
-            'transfer_link': self._transfer_link(),
-            'reason': self._reason,
-            'src-type': self._file_metadata.get('src_type'),
-            'src-rse': self._src_rse,
-            'src-url': self._src_url,
-            'dst-type': self._file_metadata.get('dst_type'),
-            'dst-rse': self._file_metadata.get('dst_rse'),
-            'dst-url': self._dst_url,
-            'started_at': self.started_at,
-            'transferred_at': self.transferred_at,
+            "transfer_link": self._transfer_link(),
+            "reason": self._reason,
+            "src-type": self._file_metadata.get("src_type"),
+            "src-rse": self._src_rse,
+            "src-url": self._src_url,
+            "dst-type": self._file_metadata.get("dst_type"),
+            "dst-rse": self._file_metadata.get("dst_rse"),
+            "dst-url": self._dst_url,
+            "started_at": self.started_at,
+            "transferred_at": self.transferred_at,
         }
         return fields
 
     def _transfer_link(self) -> str:
-        return '%s/fts3/ftsmon/#/job/%s' % (self._fts_address.replace('8446', '8449'), self._transfer_id)
+        return "%s/fts3/ftsmon/#/job/%s" % (
+            self._fts_address.replace("8446", "8449"),
+            self._transfer_id,
+        )
 
-    def _find_attribute_updates(self, request: dict, new_state: RequestState, reason: Optional[str], overwrite_corrupted_files: Optional[bool] = None) -> Optional[dict[str, Any]]:
+    def _find_attribute_updates(
+        self,
+        request: dict,
+        new_state: RequestState,
+        reason: Optional[str],
+        overwrite_corrupted_files: Optional[bool] = None,
+    ) -> Optional[dict[str, Any]]:
         attributes = None
-        if new_state == RequestState.FAILED and (reason and any(s in reason for s in (FTS_FILE_EXISTS_ERROR_MSG, FTS_FILE_EXISTS_ERROR_MSG_LEGACY))):
-            dst_file = self._file_metadata.get('dst_file', {})
+        if new_state == RequestState.FAILED and (
+            reason
+            and any(
+                s in reason
+                for s in (FTS_FILE_EXISTS_ERROR_MSG, FTS_FILE_EXISTS_ERROR_MSG_LEGACY)
+            )
+        ):
+            dst_file = self._file_metadata.get("dst_file", {})
             if self._dst_file_set_and_file_corrupted(request, dst_file):
                 if overwrite_corrupted_files:
-                    attributes = request['attributes']
-                    attributes['overwrite'] = True
+                    attributes = request["attributes"]
+                    attributes["overwrite"] = True
         return attributes
 
-    def _find_used_source_rse(self, session: "Session", logger: "LoggerFunction") -> tuple[Optional[str], Optional[str]]:
-        meta_rse_name = self._file_metadata.get('src_rse', None)
-        meta_rse_id = self._file_metadata.get('src_rse_id', None)
-        request_id = self._file_metadata.get('request_id', None)
+    def _find_used_source_rse(
+        self, session: "Session", logger: "LoggerFunction"
+    ) -> tuple[Optional[str], Optional[str]]:
+        meta_rse_name = self._file_metadata.get("src_rse", None)
+        meta_rse_id = self._file_metadata.get("src_rse_id", None)
+        request_id = self._file_metadata.get("request_id", None)
 
         if self._multi_sources and self._src_url:
-            rse_name, rse_id = get_source_rse(request_id, self._src_url, session=session)
+            rse_name, rse_id = get_source_rse(
+                request_id, self._src_url, session=session
+            )
             if rse_name and rse_name != meta_rse_name:
-                logger(logging.DEBUG, 'Correct RSE: %s for source surl: %s' % (rse_name, self._src_url))
+                logger(
+                    logging.DEBUG,
+                    "Correct RSE: %s for source surl: %s" % (rse_name, self._src_url),
+                )
                 return rse_name, rse_id
 
         return meta_rse_name, meta_rse_id
 
     @staticmethod
     def _dst_file_set_and_file_corrupted(request: dict, dst_file: dict) -> bool:
-        if (request and dst_file and (
-                dst_file.get('file_size') is not None and dst_file['file_size'] != request.get('bytes')
-                or dst_file.get('checksum_type', '').lower() == 'adler32' and dst_file.get('checksum_value') != request.get('adler32')
-                or dst_file.get('checksum_type', '').lower() == 'md5' and dst_file.get('checksum_value') != request.get('md5'))):
+        if (
+            request
+            and dst_file
+            and (
+                dst_file.get("file_size") is not None
+                and dst_file["file_size"] != request.get("bytes")
+                or dst_file.get("checksum_type", "").lower() == "adler32"
+                and dst_file.get("checksum_value") != request.get("adler32")
+                or dst_file.get("checksum_type", "").lower() == "md5"
+                and dst_file.get("checksum_value") != request.get("md5")
+            )
+        ):
             return True
         return False
 
     @staticmethod
     def _dst_file_set_and_file_correct(request: dict, dst_file: dict) -> bool:
-        if (request and dst_file
-                and dst_file.get('file_size')
-                and dst_file.get('file_size') == request.get('bytes')
-                and (dst_file.get('checksum_type', '').lower() == 'adler32' and dst_file.get('checksum_value') == request.get('adler32')
-                     or dst_file.get('checksum_type', '').lower() == 'md5' and dst_file.get('checksum_value') == request.get('md5'))):
+        if (
+            request
+            and dst_file
+            and dst_file.get("file_size")
+            and dst_file.get("file_size") == request.get("bytes")
+            and (
+                dst_file.get("checksum_type", "").lower() == "adler32"
+                and dst_file.get("checksum_value") == request.get("adler32")
+                or dst_file.get("checksum_type", "").lower() == "md5"
+                and dst_file.get("checksum_value") == request.get("md5")
+            )
+        ):
             return True
         return False
 
     @classmethod
-    def _is_recoverable_fts_overwrite_error(cls, request: dict[str, Any], reason: Optional[str],
-                                            file_metadata: dict[str, Any]) -> bool:
+    def _is_recoverable_fts_overwrite_error(
+        cls,
+        request: dict[str, Any],
+        reason: Optional[str],
+        file_metadata: dict[str, Any],
+    ) -> bool:
         if not request or not file_metadata:
             return False
-        dst_file = file_metadata.get('dst_file', {})
-        dst_type = file_metadata.get('dst_type', None)
-        METRICS.counter('overwrite.check.{rsetype}.{rse}').labels(rse=file_metadata["dst_rse"], rsetype=dst_type).inc()
+        dst_file = file_metadata.get("dst_file", {})
+        dst_type = file_metadata.get("dst_type", None)
+        METRICS.counter("overwrite.check.{rsetype}.{rse}").labels(
+            rse=file_metadata["dst_rse"], rsetype=dst_type
+        ).inc()
 
-        if reason and any(s in reason for s in (FTS_FILE_EXISTS_ERROR_MSG, FTS_FILE_EXISTS_ERROR_MSG_LEGACY)):
+        if reason and any(
+            s in reason
+            for s in (FTS_FILE_EXISTS_ERROR_MSG, FTS_FILE_EXISTS_ERROR_MSG_LEGACY)
+        ):
             if cls._dst_file_set_and_file_correct(request, dst_file):
-                if dst_type == 'DISK' or dst_file.get('file_on_tape'):
-                    METRICS.counter('overwrite.ok.{rsetype}.{rse}').labels(rse=file_metadata["dst_rse"], rsetype=dst_type).inc()
+                if dst_type == "DISK" or dst_file.get("file_on_tape"):
+                    METRICS.counter("overwrite.ok.{rsetype}.{rse}").labels(
+                        rse=file_metadata["dst_rse"], rsetype=dst_type
+                    ).inc()
                     return True
 
-        METRICS.counter('overwrite.fail.{rsetype}.{rse}').labels(rse=file_metadata["dst_rse"], rsetype=dst_type).inc()
+        METRICS.counter("overwrite.fail.{rsetype}.{rse}").labels(
+            rse=file_metadata["dst_rse"], rsetype=dst_type
+        ).inc()
         return False
 
 
 class FTS3CompletionMessageTransferStatusReport(Fts3TransferStatusReport):
-    def __init__(self, external_host: str, request_id: str, fts_message: dict[str, Any]):
+    def __init__(
+        self, external_host: str, request_id: str, fts_message: dict[str, Any]
+    ):
         super().__init__(external_host=external_host, request_id=request_id)
 
         self.fts_message = fts_message
 
-        transfer_id = fts_message.get('tr_id')
+        transfer_id = fts_message.get("tr_id")
         if transfer_id is not None:
             self._transfer_id = transfer_id.split("__")[-1]
 
-        self._file_metadata = fts_message['file_metadata']
-        self._multi_sources = str(fts_message.get('job_metadata', {}).get('multi_sources', '')).lower() == 'true'
-        self._src_url = fts_message.get('src_url', None)
-        self._dst_url = fts_message.get('dst_url', None)
+        self._file_metadata = fts_message["file_metadata"]
+        self._multi_sources = (
+            str(fts_message.get("job_metadata", {}).get("multi_sources", "")).lower()
+            == "true"
+        )
+        self._src_url = fts_message.get("src_url", None)
+        self._dst_url = fts_message.get("dst_url", None)
 
-    def initialize(self, session: "Session", logger: "LoggerFunction" = logging.log) -> None:
-
+    def initialize(
+        self, session: "Session", logger: "LoggerFunction" = logging.log
+    ) -> None:
         fts_message = self.fts_message
         request_id = self.request_id
 
-        reason = fts_message.get('t__error_message', None)
+        reason = fts_message.get("t__error_message", None)
         new_state = None
-        if str(fts_message['t_final_transfer_state']) == FTS_COMPLETE_STATE.OK and not fts_message.get('is_archiving'):  # pylint:disable=no-member
+        if str(
+            fts_message["t_final_transfer_state"]
+        ) == FTS_COMPLETE_STATE.OK and not fts_message.get(
+            "is_archiving"
+        ):  # pylint:disable=no-member
             new_state = RequestState.DONE
-        elif str(fts_message['t_final_transfer_state']) == FTS_COMPLETE_STATE.ERROR:
+        elif str(fts_message["t_final_transfer_state"]) == FTS_COMPLETE_STATE.ERROR:
             request = self.request(session)
             if request is not None:
-                if self._is_recoverable_fts_overwrite_error(request, reason, self._file_metadata):  # pylint:disable=no-member
+                if self._is_recoverable_fts_overwrite_error(
+                    request, reason, self._file_metadata
+                ):  # pylint:disable=no-member
                     new_state = RequestState.DONE
                 else:
                     new_state = RequestState.FAILED
@@ -697,77 +903,125 @@ class FTS3CompletionMessageTransferStatusReport(Fts3TransferStatusReport):
         if new_state:
             request = self.request(session)
             if not request:
-                logger(logging.WARNING, '%s: no request with this id in the database. Skipping. external_id: %s (%s). new_state: %s', request_id, transfer_id, self.external_host, new_state)
+                logger(
+                    logging.WARNING,
+                    "%s: no request with this id in the database. Skipping. external_id: %s (%s). new_state: %s",
+                    request_id,
+                    transfer_id,
+                    self.external_host,
+                    new_state,
+                )
                 return
-            if request and request['external_id'] == transfer_id and request['state'] != new_state:
+            if (
+                request
+                and request["external_id"] == transfer_id
+                and request["state"] != new_state
+            ):
                 src_rse_name, src_rse_id = self._find_used_source_rse(session, logger)
 
                 self._reason = reason
                 self._src_rse = src_rse_name
-                self._fts_address = request['external_host'] or self._fts_address
+                self._fts_address = request["external_host"] or self._fts_address
 
                 self.state = new_state
                 self.external_id = transfer_id
-                self.started_at = datetime.datetime.utcfromtimestamp(float(fts_message.get('tr_timestamp_start', 0)) / 1000)
-                self.transferred_at = datetime.datetime.utcfromtimestamp(float(fts_message.get('tr_timestamp_complete', 0)) / 1000)
+                self.started_at = datetime.datetime.utcfromtimestamp(
+                    float(fts_message.get("tr_timestamp_start", 0)) / 1000
+                )
+                self.transferred_at = datetime.datetime.utcfromtimestamp(
+                    float(fts_message.get("tr_timestamp_complete", 0)) / 1000
+                )
                 self.staging_started_at = None
                 self.staging_finished_at = None
                 self.source_rse_id = src_rse_id
                 self.err_msg = get_transfer_error(self.state, reason)
-                if self.err_msg and self._file_metadata.get('src_type') == "TAPE":
-                    self.err_msg = '[TAPE SOURCE] ' + self.err_msg
+                if self.err_msg and self._file_metadata.get("src_type") == "TAPE":
+                    self.err_msg = "[TAPE SOURCE] " + self.err_msg
                 self.attributes = self._find_attribute_updates(
                     request=request,
                     new_state=new_state,
                     reason=reason,
-                    overwrite_corrupted_files=config_get_bool('transfers', 'overwrite_corrupted_files', default=False, session=session),
+                    overwrite_corrupted_files=config_get_bool(
+                        "transfers",
+                        "overwrite_corrupted_files",
+                        default=False,
+                        session=session,
+                    ),
                 )
-            elif request['external_id'] != transfer_id:
-                logger(logging.WARNING, "Response %s with transfer id %s is different from the request transfer id %s, will not update" % (request_id, transfer_id, request['external_id']))
+            elif request["external_id"] != transfer_id:
+                logger(
+                    logging.WARNING,
+                    "Response %s with transfer id %s is different from the request transfer id %s, will not update"
+                    % (request_id, transfer_id, request["external_id"]),
+                )
             else:
-                logger(logging.DEBUG, "Request %s is already in %s state, will not update" % (request_id, new_state))
+                logger(
+                    logging.DEBUG,
+                    "Request %s is already in %s state, will not update"
+                    % (request_id, new_state),
+                )
         else:
-            logger(logging.DEBUG, "No state change computed for %s. Skipping request update." % request_id)
+            logger(
+                logging.DEBUG,
+                "No state change computed for %s. Skipping request update."
+                % request_id,
+            )
 
 
 class FTS3ApiTransferStatusReport(Fts3TransferStatusReport):
-    def __init__(self, external_host: str, request_id: str, job_response: dict[str, Any], file_response: dict[str, Any], request: Optional[dict[str, Any]] = None):
-        super().__init__(external_host=external_host, request_id=request_id, request=request)
+    def __init__(
+        self,
+        external_host: str,
+        request_id: str,
+        job_response: dict[str, Any],
+        file_response: dict[str, Any],
+        request: Optional[dict[str, Any]] = None,
+    ):
+        super().__init__(
+            external_host=external_host, request_id=request_id, request=request
+        )
 
         self.job_response = job_response
         self.file_response = file_response
 
-        self._transfer_id = job_response.get('job_id')
+        self._transfer_id = job_response.get("job_id")
 
-        self._file_metadata = file_response['file_metadata']
-        self._multi_sources = str(job_response['job_metadata'].get('multi_sources', '')).lower() == 'true'
-        self._src_url = file_response.get('source_surl', None)
-        self._dst_url = file_response.get('dest_surl', None)
+        self._file_metadata = file_response["file_metadata"]
+        self._multi_sources = (
+            str(job_response["job_metadata"].get("multi_sources", "")).lower() == "true"
+        )
+        self._src_url = file_response.get("source_surl", None)
+        self._dst_url = file_response.get("dest_surl", None)
         self.logger = logging.log
 
     def initialize(self, session: "Session", logger=logging.log) -> None:
-
         self.logger = logger
         job_response = self.job_response
         file_response = self.file_response
         request_id = self.request_id
 
-        file_state = file_response['file_state']
-        reason = file_response.get('reason', None)
+        file_state = file_response["file_state"]
+        reason = file_response.get("reason", None)
 
         new_state = None
-        job_state = job_response.get('job_state', None)
-        multi_hop = job_response.get('job_type') == FTS_JOB_TYPE.MULTI_HOP
+        job_state = job_response.get("job_state", None)
+        multi_hop = job_response.get("job_type") == FTS_JOB_TYPE.MULTI_HOP
         job_state_is_final = job_state in FINAL_FTS_JOB_STATES
         file_state_is_final = file_state in FINAL_FTS_FILE_STATES
         if file_state_is_final:
             if file_state == FTS_STATE.FINISHED:
                 new_state = RequestState.DONE
-            elif file_state == FTS_STATE.FAILED and job_state_is_final or \
-                    file_state == FTS_STATE.FAILED and not self._multi_sources:
+            elif (
+                file_state == FTS_STATE.FAILED
+                and job_state_is_final
+                or file_state == FTS_STATE.FAILED
+                and not self._multi_sources
+            ):
                 request = self.request(session)
                 if request is not None:
-                    if self._is_recoverable_fts_overwrite_error(request, reason, self._file_metadata):
+                    if self._is_recoverable_fts_overwrite_error(
+                        request, reason, self._file_metadata
+                    ):
                         new_state = RequestState.DONE
                     else:
                         new_state = RequestState.FAILED
@@ -779,15 +1033,22 @@ class FTS3ApiTransferStatusReport(Fts3TransferStatusReport):
                 else:
                     new_state = RequestState.FAILED
                     if not reason and multi_hop:
-                        reason = 'Unused hop in multi-hop'
+                        reason = "Unused hop in multi-hop"
 
         transfer_id = self._transfer_id
         if new_state:
             request = self.request(session)
             if not request:
-                logger(logging.WARNING, '%s: no request with this id in the database. Skipping. external_id: %s (%s). new_state: %s', request_id, transfer_id, self.external_host, new_state)
+                logger(
+                    logging.WARNING,
+                    "%s: no request with this id in the database. Skipping. external_id: %s (%s). new_state: %s",
+                    request_id,
+                    transfer_id,
+                    self.external_host,
+                    new_state,
+                )
                 return
-            if request['external_id'] == transfer_id and request['state'] != new_state:
+            if request["external_id"] == transfer_id and request["state"] != new_state:
                 src_rse_name, src_rse_id = self._find_used_source_rse(session, logger)
 
                 self._reason = reason
@@ -795,24 +1056,61 @@ class FTS3ApiTransferStatusReport(Fts3TransferStatusReport):
 
                 self.state = new_state
                 self.external_id = transfer_id
-                self.started_at = datetime.datetime.strptime(file_response['start_time'], '%Y-%m-%dT%H:%M:%S') if file_response['start_time'] else None
-                self.transferred_at = datetime.datetime.strptime(file_response['finish_time'], '%Y-%m-%dT%H:%M:%S') if file_response['finish_time'] else None
-                self.staging_started_at = datetime.datetime.strptime(file_response['staging_start'], '%Y-%m-%dT%H:%M:%S') if file_response['staging_start'] else None
-                self.staging_finished_at = datetime.datetime.strptime(file_response['staging_finished'], '%Y-%m-%dT%H:%M:%S') if file_response['staging_finished'] else None
+                self.started_at = (
+                    datetime.datetime.strptime(
+                        file_response["start_time"], "%Y-%m-%dT%H:%M:%S"
+                    )
+                    if file_response["start_time"]
+                    else None
+                )
+                self.transferred_at = (
+                    datetime.datetime.strptime(
+                        file_response["finish_time"], "%Y-%m-%dT%H:%M:%S"
+                    )
+                    if file_response["finish_time"]
+                    else None
+                )
+                self.staging_started_at = (
+                    datetime.datetime.strptime(
+                        file_response["staging_start"], "%Y-%m-%dT%H:%M:%S"
+                    )
+                    if file_response["staging_start"]
+                    else None
+                )
+                self.staging_finished_at = (
+                    datetime.datetime.strptime(
+                        file_response["staging_finished"], "%Y-%m-%dT%H:%M:%S"
+                    )
+                    if file_response["staging_finished"]
+                    else None
+                )
                 self.source_rse_id = src_rse_id
                 self.err_msg = get_transfer_error(self.state, reason)
-                if self.err_msg and self._file_metadata.get('src_type') == "TAPE":
-                    self.err_msg = '[TAPE SOURCE] ' + self.err_msg
+                if self.err_msg and self._file_metadata.get("src_type") == "TAPE":
+                    self.err_msg = "[TAPE SOURCE] " + self.err_msg
                 self.attributes = self._find_attribute_updates(
                     request=request,
                     new_state=new_state,
                     reason=reason,
-                    overwrite_corrupted_files=config_get_bool('transfers', 'overwrite_corrupted_files', default=False, session=session),
+                    overwrite_corrupted_files=config_get_bool(
+                        "transfers",
+                        "overwrite_corrupted_files",
+                        default=False,
+                        session=session,
+                    ),
                 )
-            elif request['external_id'] != transfer_id:
-                logger(logging.WARNING, "Response %s with transfer id %s is different from the request transfer id %s, will not update" % (request_id, transfer_id, request['external_id']))
+            elif request["external_id"] != transfer_id:
+                logger(
+                    logging.WARNING,
+                    "Response %s with transfer id %s is different from the request transfer id %s, will not update"
+                    % (request_id, transfer_id, request["external_id"]),
+                )
             else:
-                logger(logging.DEBUG, "Request %s is already in %s state, will not update" % (request_id, new_state))
+                logger(
+                    logging.DEBUG,
+                    "Request %s is already in %s state, will not update"
+                    % (request_id, new_state),
+                )
 
 
 class FTS3Transfertool(Transfertool):
@@ -820,23 +1118,24 @@ class FTS3Transfertool(Transfertool):
     FTS3 implementation of a Rucio transfertool
     """
 
-    external_name = 'fts3'
-    required_rse_attrs = (RseAttr.FTS, )
-    supported_schemes = Transfertool.supported_schemes.union(('mock', ))
+    external_name = "fts3"
+    required_rse_attrs = (RseAttr.FTS,)
+    supported_schemes = Transfertool.supported_schemes.union(("mock",))
 
-    def __init__(self,
-                 external_host: str,
-                 oidc_support: bool = False,
-                 vo: Optional[str] = None,
-                 group_bulk: int = 1,
-                 group_policy: str = 'rule',
-                 source_strategy: Optional[str] = None,
-                 max_time_in_queue: Optional[dict[str, Any]] = None,
-                 bring_online: Optional[int] = 43200,
-                 default_lifetime: Optional[int] = 172800,
-                 archive_timeout_override: Optional[int] = None,
-                 logger: "LoggerFunction" = logging.log
-                 ):
+    def __init__(
+        self,
+        external_host: str,
+        oidc_support: bool = False,
+        vo: Optional[str] = None,
+        group_bulk: int = 1,
+        group_policy: str = "rule",
+        source_strategy: Optional[str] = None,
+        max_time_in_queue: Optional[dict[str, Any]] = None,
+        bring_online: Optional[int] = 43200,
+        default_lifetime: Optional[int] = 172800,
+        archive_timeout_override: Optional[int] = None,
+        logger: "LoggerFunction" = logging.log,
+    ):
         super().__init__(external_host, logger)
 
         self.group_policy = group_policy
@@ -848,30 +1147,47 @@ class FTS3Transfertool(Transfertool):
         self.archive_timeout_override = archive_timeout_override
 
         try:
-            tape_plugins = config_get_list("transfers", "fts3tape_metadata_plugins", raise_exception=True)
-            self.tape_metadata_plugins = [FTS3TapeMetadataPlugin(plugin.strip(" ")) for plugin in tape_plugins]
+            tape_plugins = config_get_list(
+                "transfers", "fts3tape_metadata_plugins", raise_exception=True
+            )
+            self.tape_metadata_plugins = [
+                FTS3TapeMetadataPlugin(plugin.strip(" ")) for plugin in tape_plugins
+            ]
         except (NoOptionError, NoSectionError, ValueError) as e:
-            self.logger(logging.DEBUG, f"Failed to set up any fts3 archive-metadata plugins: {e}")
+            self.logger(
+                logging.DEBUG,
+                f"Failed to set up any fts3 archive-metadata plugins: {e}",
+            )
             self.tape_metadata_plugins = []
 
         self.token = None
         if oidc_support:
             fts_hostname = urlparse(external_host).hostname
             if fts_hostname is not None:
-                token = request_token(audience=fts_hostname, scope='fts')
+                token = request_token(audience=fts_hostname, scope="fts")
                 if token is not None:
-                    self.logger(logging.INFO, 'Using a token to authenticate with FTS instance %s', fts_hostname)
+                    self.logger(
+                        logging.INFO,
+                        "Using a token to authenticate with FTS instance %s",
+                        fts_hostname,
+                    )
                     self.token = token
                 else:
-                    self.logger(logging.WARNING, 'Failed to procure a token to authenticate with FTS instance %s', fts_hostname)
+                    self.logger(
+                        logging.WARNING,
+                        "Failed to procure a token to authenticate with FTS instance %s",
+                        fts_hostname,
+                    )
 
-        self.deterministic_id = config_get_bool('conveyor', 'use_deterministic_id', False, False)
-        self.headers = {'Content-Type': 'application/json'}
-        if self.external_host.startswith('https://'):
+        self.deterministic_id = config_get_bool(
+            "conveyor", "use_deterministic_id", False, False
+        )
+        self.headers = {"Content-Type": "application/json"}
+        if self.external_host.startswith("https://"):
             if self.token:
                 self.cert = None
                 self.verify = False
-                self.headers['Authorization'] = 'Bearer ' + self.token
+                self.headers["Authorization"] = "Bearer " + self.token
             else:
                 cert = _pick_cert_file(vo=vo)
                 self.cert = (cert, cert)
@@ -883,17 +1199,19 @@ class FTS3Transfertool(Transfertool):
         self.scitags_exp_id, self.scitags_activity_ids = _scitags_ids(logger=logger)
 
     @classmethod
-    def _pick_fts_servers(cls, source_rse: "RseData", dest_rse: "RseData") -> Optional[list[str]]:
+    def _pick_fts_servers(
+        cls, source_rse: "RseData", dest_rse: "RseData"
+    ) -> Optional[list[str]]:
         source_servers = source_rse.attributes.get(RseAttr.FTS, None)
         dest_servers = dest_rse.attributes.get(RseAttr.FTS, None)
         if source_servers is None or dest_servers is None:
             return None
 
         servers_to_use = dest_servers
-        if source_rse.attributes.get(RseAttr.SIGN_URL, None) == 'gcs':
+        if source_rse.attributes.get(RseAttr.SIGN_URL, None) == "gcs":
             servers_to_use = source_servers
 
-        return servers_to_use.split(',')
+        return servers_to_use.split(",")
 
     @classmethod
     def can_perform_transfer(cls, source_rse: "RseData", dest_rse: "RseData") -> bool:
@@ -902,9 +1220,13 @@ class FTS3Transfertool(Transfertool):
         return False
 
     @classmethod
-    def submission_builder_for_path(cls, transfer_path: "list[DirectTransfer]", logger: "LoggerFunction" = logging.log):
+    def submission_builder_for_path(
+        cls,
+        transfer_path: "list[DirectTransfer]",
+        logger: "LoggerFunction" = logging.log,
+    ):
         vo = None
-        if config_get_bool('common', 'multi_vo', False, None):
+        if config_get_bool("common", "multi_vo", False, None):
             vo = transfer_path[-1].rws.scope.vo
 
         sub_path = []
@@ -918,18 +1240,32 @@ class FTS3Transfertool(Transfertool):
                 break
 
         if len(sub_path) < len(transfer_path):
-            logger(logging.INFO, 'FTS3Transfertool can only submit {} hops from {}'.format(len(sub_path), [str(hop) for hop in transfer_path]))
+            logger(
+                logging.INFO,
+                "FTS3Transfertool can only submit {} hops from {}".format(
+                    len(sub_path), [str(hop) for hop in transfer_path]
+                ),
+            )
 
         if sub_path:
             oidc_support = False
             if all(_use_tokens(t) for t in sub_path):
-                logger(logging.DEBUG, 'OAuth2/OIDC available for transfer {}'.format([str(hop) for hop in sub_path]))
+                logger(
+                    logging.DEBUG,
+                    "OAuth2/OIDC available for transfer {}".format(
+                        [str(hop) for hop in sub_path]
+                    ),
+                )
                 oidc_support = True
-            return sub_path, TransferToolBuilder(cls, external_host=fts_hosts[0], oidc_support=oidc_support, vo=vo)
+            return sub_path, TransferToolBuilder(
+                cls, external_host=fts_hosts[0], oidc_support=oidc_support, vo=vo
+            )
         else:
             return [], None
 
-    def group_into_submit_jobs(self, transfer_paths: "list[list[DirectTransfer]]") -> list[dict[str, Any]]:
+    def group_into_submit_jobs(
+        self, transfer_paths: "list[list[DirectTransfer]]"
+    ) -> list[dict[str, Any]]:
         jobs = bulk_group_transfers(
             transfer_paths,
             policy=self.group_policy,
@@ -943,162 +1279,240 @@ class FTS3Transfertool(Transfertool):
         )
         return jobs
 
-    def _file_from_transfer(self, transfer: "DirectTransfer", job_params: dict[str, str]) -> dict[str, Any]:
+    def _file_from_transfer(
+        self, transfer: "DirectTransfer", job_params: dict[str, str]
+    ) -> dict[str, Any]:
         rws = transfer.rws
-        checksum_to_use = _pick_fts_checksum(transfer, path_strategy=job_params['verify_checksum'])
+        checksum_to_use = _pick_fts_checksum(
+            transfer, path_strategy=job_params["verify_checksum"]
+        )
         t_file = {
-            'sources': [transfer.source_url(s) for s in transfer.sources],
-            'destinations': [transfer.dest_url],
-            'metadata': {
-                'request_id': rws.request_id,
-                'scope': rws.scope,
-                'name': rws.name,
-                'activity': rws.activity,
-                'request_type': rws.request_type,
-                'src_type': "TAPE" if transfer.src.rse.is_tape_or_staging_required() else 'DISK',
-                'dst_type': "TAPE" if transfer.dst.rse.is_tape() else 'DISK',
-                'src_rse': transfer.src.rse.name,
-                'dst_rse': transfer.dst.rse.name,
-                'src_rse_id': transfer.src.rse.id,
-                'dest_rse_id': transfer.dst.rse.id,
-                'filesize': rws.byte_count,
-                'md5': rws.md5,
-                'adler32': rws.adler32
+            "sources": [transfer.source_url(s) for s in transfer.sources],
+            "destinations": [transfer.dest_url],
+            "metadata": {
+                "request_id": rws.request_id,
+                "scope": rws.scope,
+                "name": rws.name,
+                "activity": rws.activity,
+                "request_type": rws.request_type,
+                "src_type": "TAPE"
+                if transfer.src.rse.is_tape_or_staging_required()
+                else "DISK",
+                "dst_type": "TAPE" if transfer.dst.rse.is_tape() else "DISK",
+                "src_rse": transfer.src.rse.name,
+                "dst_rse": transfer.dst.rse.name,
+                "src_rse_id": transfer.src.rse.id,
+                "dest_rse_id": transfer.dst.rse.id,
+                "filesize": rws.byte_count,
+                "md5": rws.md5,
+                "adler32": rws.adler32,
             },
-            'filesize': rws.byte_count,
-            'checksum': checksum_to_use,
-            'selection_strategy': self.source_strategy if self.source_strategy else _configured_source_strategy(transfer.rws.activity, logger=self.logger),
-            'activity': rws.activity
+            "filesize": rws.byte_count,
+            "checksum": checksum_to_use,
+            "selection_strategy": self.source_strategy
+            if self.source_strategy
+            else _configured_source_strategy(transfer.rws.activity, logger=self.logger),
+            "activity": rws.activity,
         }
 
         if self.token:
-            t_file['source_tokens'] = []
+            t_file["source_tokens"] = []
             for source in transfer.sources:
                 src_audience = determine_audience_for_rse(rse_id=source.rse.id)
-                src_scope = determine_scope_for_rse(rse_id=source.rse.id, scopes=['storage.read'], extra_scopes=['offline_access'])
-                t_file['source_tokens'].append(request_token(src_audience, src_scope))
+                src_scope = determine_scope_for_rse(
+                    rse_id=source.rse.id,
+                    scopes=["storage.read"],
+                    extra_scopes=["offline_access"],
+                )
+                t_file["source_tokens"].append(request_token(src_audience, src_scope))
 
             dst_audience = determine_audience_for_rse(transfer.dst.rse.id)
             # FIXME: At the time of writing, StoRM requires `storage.read` in
             # order to perform a stat operation.
-            dst_scope = determine_scope_for_rse(transfer.dst.rse.id, scopes=['storage.modify', 'storage.read'], extra_scopes=['offline_access'])
-            t_file['destination_tokens'] = [request_token(dst_audience, dst_scope)]
+            dst_scope = determine_scope_for_rse(
+                transfer.dst.rse.id,
+                scopes=["storage.modify", "storage.read"],
+                extra_scopes=["offline_access"],
+            )
+            t_file["destination_tokens"] = [request_token(dst_audience, dst_scope)]
 
         if isinstance(self.scitags_exp_id, int):
             activity_id = self.scitags_activity_ids.get(rws.activity)
             if isinstance(activity_id, int):
-                t_file['scitag'] = self.scitags_exp_id << 6 | activity_id
+                t_file["scitag"] = self.scitags_exp_id << 6 | activity_id
 
-        if t_file['metadata']['dst_type'] == 'TAPE':
-            t_file['metadata']['vo'] = rws.scope.vo
+        if t_file["metadata"]["dst_type"] == "TAPE":
+            t_file["metadata"]["vo"] = rws.scope.vo
             for plugin in self.tape_metadata_plugins:
-                t_file = deep_merge_dict(source=plugin.hints(t_file['metadata']), destination=t_file)
+                t_file = deep_merge_dict(
+                    source=plugin.hints(t_file["metadata"]), destination=t_file
+                )
 
-        if t_file['metadata']['src_type'] == 'TAPE':
-            t_file['staging_metadata'] = {"default": {"activity": rws.activity}}
+        if t_file["metadata"]["src_type"] == "TAPE":
+            t_file["staging_metadata"] = {"default": {"activity": rws.activity}}
 
         return t_file
 
-    def submit(self, transfers: "Sequence[DirectTransfer]", job_params: dict[str, str], timeout: Optional[int] = None) -> str:
+    def submit(
+        self,
+        transfers: "Sequence[DirectTransfer]",
+        job_params: dict[str, str],
+        timeout: Optional[int] = None,
+    ) -> str:
         files = []
         for transfer in transfers:
             files.append(self._file_from_transfer(transfer, job_params))
 
         for transfer_file in files:
-            if not transfer_file['sources'] or transfer_file['sources'] == []:
-                raise Exception('No sources defined')
+            if not transfer_file["sources"] or transfer_file["sources"] == []:
+                raise Exception("No sources defined")
 
         transfer_id = None
         expected_transfer_id = None
         if self.deterministic_id:
             job_params = job_params.copy()
             job_params["id_generator"] = "deterministic"
-            job_params["sid"] = files[0]['metadata']['request_id']
+            job_params["sid"] = files[0]["metadata"]["request_id"]
             expected_transfer_id = self.__get_deterministic_id(job_params["sid"])
-            self.logger(logging.DEBUG, "Submit bulk transfers in deterministic mode, sid %s, expected transfer id: %s", job_params["sid"], expected_transfer_id)
+            self.logger(
+                logging.DEBUG,
+                "Submit bulk transfers in deterministic mode, sid %s, expected transfer id: %s",
+                job_params["sid"],
+                expected_transfer_id,
+            )
 
-        params_dict = {'files': files, 'params': job_params}
+        params_dict = {"files": files, "params": job_params}
         params_str = json.dumps(params_dict, cls=APIEncoder)
 
         post_result = None
         stopwatch = Stopwatch()
         try:
-            post_result = requests.post('%s/jobs' % self.external_host,
-                                        verify=self.verify,
-                                        cert=self.cert,
-                                        data=params_str,
-                                        headers=self.headers,
-                                        timeout=timeout)
-            labels = {'host': self.__extract_host(self.external_host)}
-            METRICS.timer('submit_transfer.{host}').labels(**labels).observe(stopwatch.elapsed / (len(files) or 1))
+            post_result = requests.post(
+                "%s/jobs" % self.external_host,
+                verify=self.verify,
+                cert=self.cert,
+                data=params_str,
+                headers=self.headers,
+                timeout=timeout,
+            )
+            labels = {"host": self.__extract_host(self.external_host)}
+            METRICS.timer("submit_transfer.{host}").labels(**labels).observe(
+                stopwatch.elapsed / (len(files) or 1)
+            )
         except ReadTimeout as error:
             raise TransferToolTimeout(error)
         except json.JSONDecodeError as error:
             raise TransferToolWrongAnswer(error)
         except Exception as error:
-            self.logger(logging.WARNING, 'Could not submit transfer to %s - %s' % (self.external_host, str(error)))
+            self.logger(
+                logging.WARNING,
+                "Could not submit transfer to %s - %s"
+                % (self.external_host, str(error)),
+            )
 
         if post_result and post_result.status_code == 200:
-            SUBMISSION_COUNTER.labels(state='success', host=self.__extract_host(self.external_host)).inc(len(files))
-            transfer_id = str(post_result.json()['job_id'])
+            SUBMISSION_COUNTER.labels(
+                state="success", host=self.__extract_host(self.external_host)
+            ).inc(len(files))
+            transfer_id = str(post_result.json()["job_id"])
         elif post_result and post_result.status_code == 409:
-            SUBMISSION_COUNTER.labels(state='failure', host=self.__extract_host(self.external_host)).inc(len(files))
+            SUBMISSION_COUNTER.labels(
+                state="failure", host=self.__extract_host(self.external_host)
+            ).inc(len(files))
             raise DuplicateFileTransferSubmission()
         else:
             if expected_transfer_id:
                 transfer_id = expected_transfer_id
-                self.logger(logging.WARNING, "Failed to submit transfer to %s, will use expected transfer id %s, error: %s", self.external_host, transfer_id, post_result.text if post_result is not None else post_result)
+                self.logger(
+                    logging.WARNING,
+                    "Failed to submit transfer to %s, will use expected transfer id %s, error: %s",
+                    self.external_host,
+                    transfer_id,
+                    post_result.text if post_result is not None else post_result,
+                )
             else:
-                self.logger(logging.WARNING, "Failed to submit transfer to %s, error: %s", self.external_host, post_result.text if post_result is not None else post_result)
-            SUBMISSION_COUNTER.labels(state='failure', host=self.__extract_host(self.external_host)).inc(len(files))
+                self.logger(
+                    logging.WARNING,
+                    "Failed to submit transfer to %s, error: %s",
+                    self.external_host,
+                    post_result.text if post_result is not None else post_result,
+                )
+            SUBMISSION_COUNTER.labels(
+                state="failure", host=self.__extract_host(self.external_host)
+            ).inc(len(files))
 
         if not transfer_id:
-            raise TransferToolWrongAnswer('No transfer id returned by %s' % self.external_host)
-        METRICS.timer('submit_transfers_fts3').observe(stopwatch.elapsed / (len(transfers) or 1))
+            raise TransferToolWrongAnswer(
+                "No transfer id returned by %s" % self.external_host
+            )
+        METRICS.timer("submit_transfers_fts3").observe(
+            stopwatch.elapsed / (len(transfers) or 1)
+        )
         return transfer_id
 
-    def cancel(self, transfer_ids: "Sequence[str]", timeout: Optional[int] = None) -> dict[str, Any]:
+    def cancel(
+        self, transfer_ids: "Sequence[str]", timeout: Optional[int] = None
+    ) -> dict[str, Any]:
         if len(transfer_ids) > 1:
-            raise NotImplementedError('Bulk cancelling not implemented')
+            raise NotImplementedError("Bulk cancelling not implemented")
         transfer_id = transfer_ids[0]
 
         job = None
 
-        job = requests.delete('%s/jobs/%s' % (self.external_host, transfer_id),
-                              verify=self.verify,
-                              cert=self.cert,
-                              headers=self.headers,
-                              timeout=timeout)
+        job = requests.delete(
+            "%s/jobs/%s" % (self.external_host, transfer_id),
+            verify=self.verify,
+            cert=self.cert,
+            headers=self.headers,
+            timeout=timeout,
+        )
 
         if job and job.status_code == 200:
-            CANCEL_COUNTER.labels(state='success', host=self.__extract_host(self.external_host)).inc()
+            CANCEL_COUNTER.labels(
+                state="success", host=self.__extract_host(self.external_host)
+            ).inc()
             return job.json()
 
-        CANCEL_COUNTER.labels(state='failure', host=self.__extract_host(self.external_host)).inc()
-        raise Exception('Could not cancel transfer: %s', job.content)
+        CANCEL_COUNTER.labels(
+            state="failure", host=self.__extract_host(self.external_host)
+        ).inc()
+        raise Exception("Could not cancel transfer: %s", job.content)
 
-    def update_priority(self, transfer_id: str, priority: int, timeout: Optional[int] = None) -> dict[str, Any]:
+    def update_priority(
+        self, transfer_id: str, priority: int, timeout: Optional[int] = None
+    ) -> dict[str, Any]:
         job = None
         params_dict = {"params": {"priority": priority}}
         params_str = json.dumps(params_dict, cls=APIEncoder)
 
-        job = requests.post('%s/jobs/%s' % (self.external_host, transfer_id),
-                            verify=self.verify,
-                            data=params_str,
-                            cert=self.cert,
-                            headers=self.headers,
-                            timeout=timeout)
+        job = requests.post(
+            "%s/jobs/%s" % (self.external_host, transfer_id),
+            verify=self.verify,
+            data=params_str,
+            cert=self.cert,
+            headers=self.headers,
+            timeout=timeout,
+        )
 
         if job and job.status_code == 200:
-            UPDATE_PRIORITY_COUNTER.labels(state='success', host=self.__extract_host(self.external_host)).inc()
+            UPDATE_PRIORITY_COUNTER.labels(
+                state="success", host=self.__extract_host(self.external_host)
+            ).inc()
             return job.json()
 
-        UPDATE_PRIORITY_COUNTER.labels(state='failure', host=self.__extract_host(self.external_host)).inc()
-        raise Exception('Could not update priority of transfer: %s', job.content)
+        UPDATE_PRIORITY_COUNTER.labels(
+            state="failure", host=self.__extract_host(self.external_host)
+        ).inc()
+        raise Exception("Could not update priority of transfer: %s", job.content)
 
-    def query(self, transfer_ids: "Sequence[str]", details: bool = False, timeout: Optional[int] = None) -> Union[Optional[dict[str, Any]], list[dict[str, Any]]]:
+    def query(
+        self,
+        transfer_ids: "Sequence[str]",
+        details: bool = False,
+        timeout: Optional[int] = None,
+    ) -> Union[Optional[dict[str, Any]], list[dict[str, Any]]]:
         if len(transfer_ids) > 1:
-            raise NotImplementedError('FTS3 transfertool query not bulk ready')
+            raise NotImplementedError("FTS3 transfertool query not bulk ready")
 
         transfer_id = transfer_ids[0]
         if details:
@@ -1106,65 +1520,96 @@ class FTS3Transfertool(Transfertool):
 
         job = None
 
-        job = requests.get('%s/jobs/%s' % (self.external_host, transfer_id),
-                           verify=self.verify,
-                           cert=self.cert,
-                           headers=self.headers,
-                           timeout=timeout)
+        job = requests.get(
+            "%s/jobs/%s" % (self.external_host, transfer_id),
+            verify=self.verify,
+            cert=self.cert,
+            headers=self.headers,
+            timeout=timeout,
+        )
         if job and job.status_code == 200:
-            QUERY_COUNTER.labels(state='success', host=self.__extract_host(self.external_host)).inc()
+            QUERY_COUNTER.labels(
+                state="success", host=self.__extract_host(self.external_host)
+            ).inc()
             return [job.json()]
 
-        QUERY_COUNTER.labels(state='failure', host=self.__extract_host(self.external_host)).inc()
-        raise Exception('Could not retrieve transfer information: %s', job.content)
+        QUERY_COUNTER.labels(
+            state="failure", host=self.__extract_host(self.external_host)
+        ).inc()
+        raise Exception("Could not retrieve transfer information: %s", job.content)
 
     def whoami(self) -> dict[str, Any]:
         get_result = None
 
-        get_result = requests.get('%s/whoami' % self.external_host,
-                                  verify=self.verify,
-                                  cert=self.cert,
-                                  headers=self.headers)
+        get_result = requests.get(
+            "%s/whoami" % self.external_host,
+            verify=self.verify,
+            cert=self.cert,
+            headers=self.headers,
+        )
 
         if get_result and get_result.status_code == 200:
-            WHOAMI_COUNTER.labels(state='success', host=self.__extract_host(self.external_host)).inc()
+            WHOAMI_COUNTER.labels(
+                state="success", host=self.__extract_host(self.external_host)
+            ).inc()
             return get_result.json()
 
-        WHOAMI_COUNTER.labels(state='failure', host=self.__extract_host(self.external_host)).inc()
-        raise Exception('Could not retrieve credentials: %s', get_result.content)
+        WHOAMI_COUNTER.labels(
+            state="failure", host=self.__extract_host(self.external_host)
+        ).inc()
+        raise Exception("Could not retrieve credentials: %s", get_result.content)
 
     def version(self) -> dict[str, Any]:
         get_result = None
 
-        get_result = requests.get('%s/' % self.external_host,
-                                  verify=self.verify,
-                                  cert=self.cert,
-                                  headers=self.headers)
+        get_result = requests.get(
+            "%s/" % self.external_host,
+            verify=self.verify,
+            cert=self.cert,
+            headers=self.headers,
+        )
 
         if get_result and get_result.status_code == 200:
-            VERSION_COUNTER.labels(state='success', host=self.__extract_host(self.external_host)).inc()
+            VERSION_COUNTER.labels(
+                state="success", host=self.__extract_host(self.external_host)
+            ).inc()
             return get_result.json()
 
-        VERSION_COUNTER.labels(state='failure', host=self.__extract_host(self.external_host)).inc()
-        raise Exception('Could not retrieve version: %s', get_result.content)
+        VERSION_COUNTER.labels(
+            state="failure", host=self.__extract_host(self.external_host)
+        ).inc()
+        raise Exception("Could not retrieve version: %s", get_result.content)
 
-    def bulk_query(self, requests_by_eid: dict[str, dict[str, dict[str, Any]]], timeout: Optional[int] = None) -> dict[str, Any]:
+    def bulk_query(
+        self,
+        requests_by_eid: dict[str, dict[str, dict[str, Any]]],
+        timeout: Optional[int] = None,
+    ) -> dict[str, Any]:
         responses = {}
         fts_session = requests.Session()
-        xfer_ids = ','.join(requests_by_eid)
-        jobs = fts_session.get('%s/jobs/%s?files=file_state,dest_surl,finish_time,start_time,staging_start,staging_finished,reason,source_surl,file_metadata' % (self.external_host, xfer_ids),
-                               verify=self.verify,
-                               cert=self.cert,
-                               headers=self.headers,
-                               timeout=timeout)
+        xfer_ids = ",".join(requests_by_eid)
+        jobs = fts_session.get(
+            "%s/jobs/%s?files=file_state,dest_surl,finish_time,start_time,staging_start,staging_finished,reason,source_surl,file_metadata"
+            % (self.external_host, xfer_ids),
+            verify=self.verify,
+            cert=self.cert,
+            headers=self.headers,
+            timeout=timeout,
+        )
 
         if jobs is None:
-            BULK_QUERY_COUNTER.labels(state='failure', host=self.__extract_host(self.external_host)).inc()
+            BULK_QUERY_COUNTER.labels(
+                state="failure", host=self.__extract_host(self.external_host)
+            ).inc()
             for transfer_id in requests_by_eid:
-                responses[transfer_id] = Exception('Transfer information returns None: %s' % jobs)
+                responses[transfer_id] = Exception(
+                    "Transfer information returns None: %s" % jobs
+                )
         elif jobs.status_code in (200, 207, 404):
             try:
-                BULK_QUERY_COUNTER.labels(state='success', host=self.__extract_host(self.external_host)).inc()
+                BULK_QUERY_COUNTER.labels(
+                    state="success", host=self.__extract_host(self.external_host)
+                ).inc()
                 jobs_response = jobs.json()
                 responses = self.__bulk_query_responses(jobs_response, requests_by_eid)
             except ReadTimeout as error:
@@ -1172,172 +1617,271 @@ class FTS3Transfertool(Transfertool):
             except json.JSONDecodeError as error:
                 raise TransferToolWrongAnswer(error)
             except Exception as error:
-                raise Exception("Failed to parse the job response: %s, error: %s" % (str(jobs), str(error)))
+                raise Exception(
+                    "Failed to parse the job response: %s, error: %s"
+                    % (str(jobs), str(error))
+                )
         else:
-            BULK_QUERY_COUNTER.labels(state='failure', host=self.__extract_host(self.external_host)).inc()
+            BULK_QUERY_COUNTER.labels(
+                state="failure", host=self.__extract_host(self.external_host)
+            ).inc()
             for transfer_id in requests_by_eid:
-                responses[transfer_id] = Exception('Could not retrieve transfer information: %s', jobs.content)
+                responses[transfer_id] = Exception(
+                    "Could not retrieve transfer information: %s", jobs.content
+                )
 
         return responses
 
     def list_se_status(self) -> dict[str, Any]:
         try:
-            result = requests.get('%s/ban/se' % self.external_host,
-                                  verify=self.verify,
-                                  cert=self.cert,
-                                  headers=self.headers,
-                                  timeout=None)
+            result = requests.get(
+                "%s/ban/se" % self.external_host,
+                verify=self.verify,
+                cert=self.cert,
+                headers=self.headers,
+                timeout=None,
+            )
         except Exception as error:
-            raise Exception('Could not retrieve transfer information: %s', error)
+            raise Exception("Could not retrieve transfer information: %s", error)
         if result and result.status_code == 200:
             return result.json()
-        raise Exception('Could not retrieve transfer information: %s', result.content)
+        raise Exception("Could not retrieve transfer information: %s", result.content)
 
     def get_se_config(self, storage_element: str) -> dict[str, Any]:
         try:
-            result = requests.get('%s/config/se' % (self.external_host),
-                                  verify=self.verify,
-                                  cert=self.cert,
-                                  headers=self.headers,
-                                  timeout=None)
+            result = requests.get(
+                "%s/config/se" % (self.external_host),
+                verify=self.verify,
+                cert=self.cert,
+                headers=self.headers,
+                timeout=None,
+            )
         except Exception:
-            self.logger(logging.WARNING, 'Could not get config of %s on %s - %s', storage_element, self.external_host, str(traceback.format_exc()))
+            self.logger(
+                logging.WARNING,
+                "Could not get config of %s on %s - %s",
+                storage_element,
+                self.external_host,
+                str(traceback.format_exc()),
+            )
         if result and result.status_code == 200:
             result_json = result.json()
             config_se = result_json[storage_element]
             return config_se
-        raise Exception('Could not get the configuration of %s , status code returned : %s', (storage_element, result.status_code if result else None))
+        raise Exception(
+            "Could not get the configuration of %s , status code returned : %s",
+            (storage_element, result.status_code if result else None),
+        )
 
     def set_se_config(
-            self,
-            storage_element: str,
-            inbound_max_active: Optional[int] = None,
-            outbound_max_active: Optional[int] = None,
-            inbound_max_throughput: Optional[float] = None,
-            outbound_max_throughput: Optional[float] = None,
-            staging: Optional[int] = None
+        self,
+        storage_element: str,
+        inbound_max_active: Optional[int] = None,
+        outbound_max_active: Optional[int] = None,
+        inbound_max_throughput: Optional[float] = None,
+        outbound_max_throughput: Optional[float] = None,
+        staging: Optional[int] = None,
     ) -> dict[str, Any]:
-        params_dict = {storage_element: {'operations': {}, 'se_info': {}}}
+        params_dict = {storage_element: {"operations": {}, "se_info": {}}}
         if staging is not None:
             policy = get_policy()
-            params_dict[storage_element]['operations'] = {policy: {'staging': staging}}
+            params_dict[storage_element]["operations"] = {policy: {"staging": staging}}
         if inbound_max_active is not None:
             try:
-                params_dict[storage_element]['se_info']['inbound_max_active'] = inbound_max_active
+                params_dict[storage_element]["se_info"][
+                    "inbound_max_active"
+                ] = inbound_max_active
             except KeyError:
-                params_dict[storage_element]['se_info'] = {'inbound_max_active': inbound_max_active}
+                params_dict[storage_element]["se_info"] = {
+                    "inbound_max_active": inbound_max_active
+                }
         if outbound_max_active is not None:
             try:
-                params_dict[storage_element]['se_info']['outbound_max_active'] = outbound_max_active
+                params_dict[storage_element]["se_info"][
+                    "outbound_max_active"
+                ] = outbound_max_active
             except KeyError:
-                params_dict[storage_element]['se_info'] = {'outbound_max_active': outbound_max_active}
+                params_dict[storage_element]["se_info"] = {
+                    "outbound_max_active": outbound_max_active
+                }
         if inbound_max_throughput is not None:
             try:
-                params_dict[storage_element]['se_info']['inbound_max_throughput'] = inbound_max_throughput
+                params_dict[storage_element]["se_info"][
+                    "inbound_max_throughput"
+                ] = inbound_max_throughput
             except KeyError:
-                params_dict[storage_element]['se_info'] = {'inbound_max_throughput': inbound_max_throughput}
+                params_dict[storage_element]["se_info"] = {
+                    "inbound_max_throughput": inbound_max_throughput
+                }
         if outbound_max_throughput is not None:
             try:
-                params_dict[storage_element]['se_info']['outbound_max_throughput'] = outbound_max_throughput
+                params_dict[storage_element]["se_info"][
+                    "outbound_max_throughput"
+                ] = outbound_max_throughput
             except KeyError:
-                params_dict[storage_element]['se_info'] = {'outbound_max_throughput': outbound_max_throughput}
+                params_dict[storage_element]["se_info"] = {
+                    "outbound_max_throughput": outbound_max_throughput
+                }
 
         params_str = json.dumps(params_dict, cls=APIEncoder)
 
         try:
-            result = requests.post('%s/config/se' % (self.external_host),
-                                   verify=self.verify,
-                                   cert=self.cert,
-                                   data=params_str,
-                                   headers=self.headers,
-                                   timeout=None)
+            result = requests.post(
+                "%s/config/se" % (self.external_host),
+                verify=self.verify,
+                cert=self.cert,
+                data=params_str,
+                headers=self.headers,
+                timeout=None,
+            )
 
         except Exception:
-            self.logger(logging.WARNING, 'Could not set the config of %s on %s - %s', storage_element, self.external_host, str(traceback.format_exc()))
+            self.logger(
+                logging.WARNING,
+                "Could not set the config of %s on %s - %s",
+                storage_element,
+                self.external_host,
+                str(traceback.format_exc()),
+            )
         if result and result.status_code == 200:
             config_se = result.json()
             return config_se
-        raise Exception('Could not set the configuration of %s , status code returned : %s', (storage_element, result.status_code if result else None))
+        raise Exception(
+            "Could not set the configuration of %s , status code returned : %s",
+            (storage_element, result.status_code if result else None),
+        )
 
-    def set_se_status(self, storage_element: str, message: str, ban: bool = True, timeout: Optional[int] = None) -> int:
-        params_dict: dict[str, Any] = {'storage': storage_element, 'message': message}
-        status = 'CANCEL'
+    def set_se_status(
+        self,
+        storage_element: str,
+        message: str,
+        ban: bool = True,
+        timeout: Optional[int] = None,
+    ) -> int:
+        params_dict: dict[str, Any] = {"storage": storage_element, "message": message}
+        status = "CANCEL"
         if timeout:
-            params_dict['timeout'] = timeout
-            status = 'WAIT'
-        params_dict['status'] = status
+            params_dict["timeout"] = timeout
+            status = "WAIT"
+        params_dict["status"] = status
         params_str = json.dumps(params_dict, cls=APIEncoder)
 
         result = None
         if ban:
             try:
-                result = requests.post('%s/ban/se' % self.external_host,
-                                       verify=self.verify,
-                                       cert=self.cert,
-                                       data=params_str,
-                                       headers=self.headers,
-                                       timeout=None)
+                result = requests.post(
+                    "%s/ban/se" % self.external_host,
+                    verify=self.verify,
+                    cert=self.cert,
+                    data=params_str,
+                    headers=self.headers,
+                    timeout=None,
+                )
             except Exception:
-                self.logger(logging.WARNING, 'Could not ban %s on %s - %s', storage_element, self.external_host, str(traceback.format_exc()))
+                self.logger(
+                    logging.WARNING,
+                    "Could not ban %s on %s - %s",
+                    storage_element,
+                    self.external_host,
+                    str(traceback.format_exc()),
+                )
             if result and result.status_code == 200:
                 return 0
-            raise Exception('Could not ban the storage %s , status code returned : %s', (storage_element, result.status_code if result else None))
+            raise Exception(
+                "Could not ban the storage %s , status code returned : %s",
+                (storage_element, result.status_code if result else None),
+            )
         else:
-
             try:
-                result = requests.delete('%s/ban/se?storage=%s' % (self.external_host, storage_element),
-                                         verify=self.verify,
-                                         cert=self.cert,
-                                         data=params_str,
-                                         headers=self.headers,
-                                         timeout=None)
+                result = requests.delete(
+                    "%s/ban/se?storage=%s" % (self.external_host, storage_element),
+                    verify=self.verify,
+                    cert=self.cert,
+                    data=params_str,
+                    headers=self.headers,
+                    timeout=None,
+                )
             except Exception:
-                self.logger(logging.WARNING, 'Could not unban %s on %s - %s', storage_element, self.external_host, str(traceback.format_exc()))
+                self.logger(
+                    logging.WARNING,
+                    "Could not unban %s on %s - %s",
+                    storage_element,
+                    self.external_host,
+                    str(traceback.format_exc()),
+                )
             if result and result.status_code == 204:
                 return 0
-            raise Exception('Could not unban the storage %s , status code returned : %s', (storage_element, result.status_code if result else None))
+            raise Exception(
+                "Could not unban the storage %s , status code returned : %s",
+                (storage_element, result.status_code if result else None),
+            )
 
     @staticmethod
     def __extract_host(external_host: str) -> Optional[str]:
         parsed_url = urlparse(external_host)
         if parsed_url.hostname:
-            return parsed_url.hostname.replace('.', '_')
+            return parsed_url.hostname.replace(".", "_")
 
     def __get_transfer_baseid_voname(self) -> tuple[Optional[str], Optional[str]]:
         result = (None, None)
         try:
-            key = 'voname:%s' % self.external_host
+            key = "voname:%s" % self.external_host
             result = REGION_SHORT.get(key)
             if isinstance(result, NoValue):
-                self.logger(logging.DEBUG, "Refresh transfer baseid and voname for %s", self.external_host)
+                self.logger(
+                    logging.DEBUG,
+                    "Refresh transfer baseid and voname for %s",
+                    self.external_host,
+                )
 
                 get_result = None
                 try:
-                    get_result = requests.get('%s/whoami' % self.external_host,
-                                              verify=self.verify,
-                                              cert=self.cert,
-                                              headers=self.headers,
-                                              timeout=5)
+                    get_result = requests.get(
+                        "%s/whoami" % self.external_host,
+                        verify=self.verify,
+                        cert=self.cert,
+                        headers=self.headers,
+                        timeout=5,
+                    )
                 except ReadTimeout as error:
                     raise TransferToolTimeout(error)
                 except json.JSONDecodeError as error:
                     raise TransferToolWrongAnswer(error)
                 except Exception as error:
-                    self.logger(logging.WARNING, 'Could not get baseid and voname from %s - %s' % (self.external_host, str(error)))
+                    self.logger(
+                        logging.WARNING,
+                        "Could not get baseid and voname from %s - %s"
+                        % (self.external_host, str(error)),
+                    )
 
                 if get_result and get_result.status_code == 200:
-                    baseid = str(get_result.json()['base_id'])
-                    voname = str(get_result.json()['vos'][0])
+                    baseid = str(get_result.json()["base_id"])
+                    voname = str(get_result.json()["vos"][0])
                     result = (baseid, voname)
 
                     REGION_SHORT.set(key, result)
 
-                    self.logger(logging.DEBUG, "Get baseid %s and voname %s from %s", baseid, voname, self.external_host)
+                    self.logger(
+                        logging.DEBUG,
+                        "Get baseid %s and voname %s from %s",
+                        baseid,
+                        voname,
+                        self.external_host,
+                    )
                 else:
-                    self.logger(logging.WARNING, "Failed to get baseid and voname from %s, error: %s", self.external_host, get_result.text if get_result is not None else get_result)
+                    self.logger(
+                        logging.WARNING,
+                        "Failed to get baseid and voname from %s, error: %s",
+                        self.external_host,
+                        get_result.text if get_result is not None else get_result,
+                    )
                     result = (None, None)
         except Exception as error:
-            self.logger(logging.WARNING, "Failed to get baseid and voname from %s: %s" % (self.external_host, str(error)))
+            self.logger(
+                logging.WARNING,
+                "Failed to get baseid and voname from %s: %s"
+                % (self.external_host, str(error)),
+            )
             result = (None, None)
         return result
 
@@ -1350,56 +1894,80 @@ class FTS3Transfertool(Transfertool):
         jobid = uuid.uuid5(atlas, sid)
         return str(jobid)
 
-    def __bulk_query_responses(self, jobs_response: list[dict[str, Any]], requests_by_eid: dict[str, dict[str, dict[str, Any]]]) -> dict[str, Any]:
+    def __bulk_query_responses(
+        self,
+        jobs_response: list[dict[str, Any]],
+        requests_by_eid: dict[str, dict[str, dict[str, Any]]],
+    ) -> dict[str, Any]:
         if not isinstance(jobs_response, list):
             jobs_response = [jobs_response]
 
         responses = {}
         for job_response in jobs_response:
-            transfer_id = job_response['job_id']
-            if job_response['http_status'] == '200 Ok':
-                files_response = job_response['files']
-                multi_sources = job_response['job_metadata'].get('multi_sources', False)
-                if multi_sources and job_response['job_state'] not in [FTS_STATE.FAILED,
-                                                                       FTS_STATE.FINISHEDDIRTY,
-                                                                       FTS_STATE.CANCELED,
-                                                                       FTS_STATE.FINISHED]:
+            transfer_id = job_response["job_id"]
+            if job_response["http_status"] == "200 Ok":
+                files_response = job_response["files"]
+                multi_sources = job_response["job_metadata"].get("multi_sources", False)
+                if multi_sources and job_response["job_state"] not in [
+                    FTS_STATE.FAILED,
+                    FTS_STATE.FINISHEDDIRTY,
+                    FTS_STATE.CANCELED,
+                    FTS_STATE.FINISHED,
+                ]:
                     responses[transfer_id] = {}
                     continue
 
                 resps = {}
                 for file_resp in files_response:
-                    file_state = file_resp['file_state']
+                    file_state = file_resp["file_state"]
                     if multi_sources and file_state == FTS_STATE.NOT_USED:
                         continue
 
-                    request_id = file_resp['file_metadata']['request_id']
+                    request_id = file_resp["file_metadata"]["request_id"]
                     request = requests_by_eid.get(transfer_id, {}).get(request_id)
                     if request is not None:
-                        resps[request_id] = FTS3ApiTransferStatusReport(self.external_host, request_id=request_id, request=request,
-                                                                        job_response=job_response, file_response=file_resp)
+                        resps[request_id] = FTS3ApiTransferStatusReport(
+                            self.external_host,
+                            request_id=request_id,
+                            request=request,
+                            job_response=job_response,
+                            file_response=file_resp,
+                        )
 
                     if multi_sources and file_state == FTS_STATE.FINISHED:
                         break
                 responses[transfer_id] = resps
-            elif job_response['http_status'] == '404 Not Found':
+            elif job_response["http_status"] == "404 Not Found":
                 responses[transfer_id] = None
             else:
-                responses[transfer_id] = Exception('Could not retrieve transfer information(http_status: %s, http_message: %s)' % (job_response['http_status'],
-                                                                                                                                   job_response['http_message'] if 'http_message' in job_response else None))
+                responses[transfer_id] = Exception(
+                    "Could not retrieve transfer information(http_status: %s, http_message: %s)"
+                    % (
+                        job_response["http_status"],
+                        job_response["http_message"]
+                        if "http_message" in job_response
+                        else None,
+                    )
+                )
         return responses
 
     def __query_details(self, transfer_id: str) -> Optional[dict[str, Any]]:
         files = None
 
-        files = requests.get('%s/jobs/%s/files' % (self.external_host, transfer_id),
-                             verify=self.verify,
-                             cert=self.cert,
-                             headers=self.headers,
-                             timeout=5)
+        files = requests.get(
+            "%s/jobs/%s/files" % (self.external_host, transfer_id),
+            verify=self.verify,
+            cert=self.cert,
+            headers=self.headers,
+            timeout=5,
+        )
         if files and (files.status_code == 200 or files.status_code == 207):
-            QUERY_DETAILS_COUNTER.labels(state='success', host=self.__extract_host(self.external_host)).inc()
+            QUERY_DETAILS_COUNTER.labels(
+                state="success", host=self.__extract_host(self.external_host)
+            ).inc()
             return files.json()
 
-        QUERY_DETAILS_COUNTER.labels(state='failure', host=self.__extract_host(self.external_host)).inc()
+        QUERY_DETAILS_COUNTER.labels(
+            state="failure", host=self.__extract_host(self.external_host)
+        ).inc()
         return

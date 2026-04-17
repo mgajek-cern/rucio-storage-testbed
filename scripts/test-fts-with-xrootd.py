@@ -18,11 +18,11 @@ import sys
 import time
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-FTS      = os.environ.get("FTS",  "https://localhost:8446")
-CERT     = os.environ.get("CERT", "/etc/grid-security/hostcert.pem")
-KEY      = os.environ.get("KEY",  "/etc/grid-security/hostkey.pem")
-SRC      = os.environ.get("SRC",  "root://xrd1//rucio/fts-test-file")
-DST      = os.environ.get("DST",  "root://xrd2//rucio/fts-test-file")
+FTS = os.environ.get("FTS", "https://localhost:8446")
+CERT = os.environ.get("CERT", "/etc/grid-security/hostcert.pem")
+KEY = os.environ.get("KEY", "/etc/grid-security/hostkey.pem")
+SRC = os.environ.get("SRC", "root://xrd1//rucio/fts-test-file")
+DST = os.environ.get("DST", "root://xrd2//rucio/fts-test-file")
 
 try:
     import fts3.rest.client.easy as fts3
@@ -33,12 +33,7 @@ except ImportError:
 # ── Step 1: create context (handles delegation automatically) ─────────────────
 print("=== Step 1: connect and delegate ===")
 try:
-    context = fts3.Context(
-        endpoint=FTS,
-        ucert=CERT,
-        ukey=KEY,
-        verify=False
-    )
+    context = fts3.Context(endpoint=FTS, ucert=CERT, ukey=KEY, verify=False)
     whoami = fts3.whoami(context)
     print(json.dumps(whoami, indent=2))
     print(f"  DN:      {whoami['user_dn']}")

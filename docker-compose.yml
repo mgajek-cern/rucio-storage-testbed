@@ -81,7 +81,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
- 
+
   fts-oidc:
     build: .
     hostname: fts-oidc
@@ -297,7 +297,7 @@ services:
       timeout: 5s
       start_period: 90s
       retries: 20
- 
+
   storm2:
     image: ghcr.io/italiangrid/storm-webdav:v1.12.0
     platform: linux/amd64

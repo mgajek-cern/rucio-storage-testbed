@@ -56,7 +56,7 @@ seed_file() {
 
 register_replica() {
   local rse=$1 scope=$2 name=$3 pfn=$4 fpath=$5 rucio_ctr=$6 storage_ctr=$7
-  
+
   # 1. Get file size (sh-compatible)
   local bytes=$(docker exec "$storage_ctr" sh -c "wc -c < '$fpath' | tr -d ' '")
 
@@ -77,10 +77,10 @@ import sys
 try:
     c = Client()
     c.add_replicas(rse='$rse', files=[{
-        'scope': '$scope', 
-        'name': '$name', 
-        'bytes': $bytes, 
-        'adler32': '$adler32', 
+        'scope': '$scope',
+        'name': '$name',
+        'bytes': $bytes,
+        'adler32': '$adler32',
         'pfn': '$pfn'
     }])
 except Exception as e:
@@ -117,7 +117,7 @@ run_transfer_test() {
 
   echo "=== Creating replication rule: XRD1 → XRD2 ==="
   local rule_id=$("$rc_fn" rule add "$scope:$name" --copies 1 --rses XRD2 | grep -v WARNING | tail -1)
-  
+
   run_daemons "$rucio_ctr"
   "$rc_fn" rule show "$rule_id"
 }
@@ -125,7 +125,7 @@ run_transfer_test() {
 run_storm_oidc_transfer_test() {
   local ts=$(date +%s)
   local scope=test name="storm-file-${ts}"
-  
+
   echo -e "\n════════════════════════════════════════\n  StoRM OIDC Transfer Test\n════════════════════════════════════════"
 
     # 1. Ask Rucio where the file SHOULD live on STORM1
@@ -134,9 +134,9 @@ run_storm_oidc_transfer_test() {
   echo "  Target PFN: $pfn"
   # Map davs://storm1:8085/data/... -> /storage/data/...
   local local_fpath=$(echo "$pfn" | sed -E 's|^[a-z]+://storm1:[0-9]+/data/|/storage/data/|')
-  
+
   seed_file "$STORM1" "$local_fpath" "$ts" "storm"
-  
+
   echo "=== Preparing destination on STORM2 ==="
   docker exec --user root "$STORM2" sh -c "mkdir -p \$(dirname '$local_fpath') && chown storm:storm \$(dirname '$local_fpath')"
 
@@ -144,7 +144,7 @@ run_storm_oidc_transfer_test() {
 
   echo "=== Creating Rule: STORM1 -> STORM2 ==="
   local rule_id=$(rc_oidc rule add "$scope:$name" --copies 1 --rses STORM2 | grep -v WARNING | tail -1)
-  
+
   run_daemons "$RUCIO_OIDC"
   rc_oidc rule show "$rule_id"
 }

@@ -13,8 +13,8 @@ The OIDC path replaces the traditional GSI proxy delegation used by the classic 
 
 ## Keycloak
 
-**Realm:** `rucio`  
-**URL:** `http://localhost:8080/realms/rucio`  
+**Realm:** `rucio`
+**URL:** `http://localhost:8080/realms/rucio`
 **Admin:** `admin` / `admin`
 
 The realm is imported from `config/keycloak/realm.json` on startup. Key settings:
@@ -24,16 +24,20 @@ The realm is imported from `config/keycloak/realm.json` on startup. Key settings
 - `refreshTokenMaxReuse: 1` — enables token exchange
 
 ### Mandatory User Roles
+
 For Rucio and FTS to maintain long-lived transfers, users must be able to request **Offline Tokens**. In Keycloak, this is not just a scope but a permission.
 
 **Requirement:** Every user (e.g. `jdoe2`) must have the Realm Role `offline_access` assigned. Without this, Keycloak returns `HTTP 400: Offline tokens not allowed`.
 
 ### Audience Mapping (StoRM Compatibility)
+
 To support Third-Party Copy (TPC) between StoRM endpoints, the `rucio-oidc` client uses a **hardcoded audience mapper**:
+
 - **Included Custom Audience:** `fts-oidc,STORM1,STORM2,storm1,storm2,rucio-oidc`
 - This ensures that a single token is valid for both the FTS REST API and the StoRM WebDAV storage endpoints.
 
-#### Update the "Fetch a token manually" command:
+#### Update the "Fetch a token manually" command
+
 Update the example to include the `fts` and `offline_access` scopes, as this is what the Rucio Python code actually requests.
 
 ```bash
@@ -55,6 +59,7 @@ Confidential client used by both rucio-oidc and fts-oidc.
 | Default scopes | `openid`, `profile`, `email`, `wlcg` |
 
 The `wlcg` client scope adds:
+
 - `wlcg.ver: "1.0"` — WLCG profile version
 - `wlcg.groups` — full-path group membership (e.g. `/rucio/users`, `/atlas/users`)
 
@@ -82,7 +87,7 @@ curl -sk -u "rucio-oidc:rucio-oidc-secret" \
 
 The `fts-oidc` service (`mgajekcern/test-fts`) runs a separate FTS instance configured for OIDC bearer token authentication only — no GSI proxy support.
 
-**REST API:** `https://localhost:8447`  
+**REST API:** `https://localhost:8447`
 **Config:** `config/fts3restconfig-oidc`, `config/fts3config-oidc`
 
 ### Patched files (volume-mounted)

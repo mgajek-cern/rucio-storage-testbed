@@ -52,6 +52,7 @@ def _load_db(app):
     init_model(engine)
 
     if app.config["sqlalchemy.url"].startswith("sqlite"):
+
         @event.listens_for(engine, "connect")
         def do_connect(dbapi_connection, connection_record):
             dbapi_connection.isolation_level = None
