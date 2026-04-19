@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# rucio-init.sh — bootstrap Rucio accounts, RSEs, protocols, distances and quotas
-# Run from repo root after `docker compose up -d`
-# Bootstraps both rucio (userpass) and rucio-oidc instances.
+
 set -euo pipefail
 
 RUCIO=rucio-storage-testbed-rucio-1
@@ -19,7 +17,7 @@ done
 echo "=== Waiting for Keycloak ==="
 for i in $(seq 1 30); do
   code=$(docker exec "$RUCIO_OIDC" curl -s -o /dev/null -w '%{http_code}' \
-    http://keycloak:8080/realms/rucio/.well-known/openid-configuration 2>/dev/null) || true
+    https://keycloak:8443/realms/rucio/.well-known/openid-configuration 2>/dev/null) || true
   [[ "$code" == "200" ]] && { echo "  Keycloak ready"; break; }
   echo "  [$i] Keycloak HTTP $code — waiting..."
   sleep 5
@@ -69,7 +67,7 @@ AUTH_HEADER=$(echo -n "rucio-oidc:rucio-oidc-secret" | base64)
 
 for i in $(seq 1 12); do
   code=$(docker exec "$RUCIO_OIDC" curl -s -o /dev/null -w '%{http_code}' \
-    -X POST http://keycloak:8080/realms/rucio/protocol/openid-connect/token \
+    -X POST https://keycloak:8443/realms/rucio/protocol/openid-connect/token \
     -H "Authorization: Basic $AUTH_HEADER" \
     -H "Content-Type: application/x-www-form-urlencoded" \
     -d "grant_type=password&username=jdoe2&password=secret" \
@@ -94,7 +92,7 @@ data = urllib.parse.urlencode({
 # Confidential client: credentials via Basic Auth header
 _auth = _b64.b64encode(b'rucio-oidc:rucio-oidc-secret').decode()
 req = urllib.request.Request(
-    'http://keycloak:8080/realms/rucio/protocol/openid-connect/token',
+    'https://keycloak:8443/realms/rucio/protocol/openid-connect/token',
     data=data,
     headers={
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -280,8 +278,8 @@ echo "=== Registering Keycloak as fts-oidc token provider ==="
 docker exec rucio-storage-testbed-ftsdb-oidc-1 mysql -ufts -pfts fts -e "
 INSERT IGNORE INTO t_token_provider (name, issuer, client_id, client_secret)
 VALUES
-  ('keycloak-rucio',       'http://keycloak:8080/realms/rucio',  'rucio-oidc', 'rucio-oidc-secret'),
-  ('keycloak-rucio-slash', 'http://keycloak:8080/realms/rucio/', 'rucio-oidc', 'rucio-oidc-secret');
+  ('keycloak-rucio',       'https://keycloak:8443/realms/rucio',  'rucio-oidc', 'rucio-oidc-secret'),
+  ('keycloak-rucio-slash', 'https://keycloak:8443/realms/rucio/', 'rucio-oidc', 'rucio-oidc-secret');
 " 2>/dev/null && echo "  token provider registered (both slash variants)"
 
 # t_token.audience is NOT NULL in the DB schema but our Keycloak tokens have no aud claim.

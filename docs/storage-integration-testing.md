@@ -129,7 +129,7 @@ Before the StoRM WebDAV TPC test, CI verifies that `fts-oidc` accepts Keycloak-i
 TOKEN=$(docker exec rucio-storage-testbed-fts-oidc-1 curl -sk \
   -u "rucio-oidc:rucio-oidc-secret" \
   -d "grant_type=password&username=jdoe2&password=secret" \
-  http://keycloak:8080/realms/rucio/protocol/openid-connect/token \
+  https://keycloak:8443/realms/rucio/protocol/openid-connect/token \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 curl -sk --cacert certs/rucio_ca.pem \
@@ -168,7 +168,7 @@ This test uses `http://storm1:8085` (anonymous read, `anonymousReadEnabled=true`
 
 === Fetching OIDC token ===
   ✓ token obtained
-  iss:    http://keycloak:8080/realms/rucio
+  iss:    https://keycloak:8443/realms/rucio
   groups: ['/rucio/users', '/atlas/users']
 
 === Storm TPC: storm1 → storm2 (OIDC token, HTTP source → HTTPS dest) ===
@@ -194,7 +194,7 @@ The full Rucio pipeline is tested for two paths: the classic GSI XRootD flow and
 Run once after `docker compose up -d`:
 
 ```bash
-./scripts/rucio-init.sh
+./scripts/bootstrap-testbed.sh
 ```
 
 This creates:
@@ -274,7 +274,7 @@ Test order (each step is gated on the previous succeeding):
 2. Start stack (`docker compose up -d`)
 3. Wait for storm1/storm2 and import `rucio_ca.pem` into the JVM truststore (needed for StoRM's CANL client to trust the self-signed CA for outbound HTTPS)
 4. Wait for FTS, Rucio, Keycloak healthchecks
-5. Run `rucio-init.sh`
+5. Run `bootstrap-testbed.sh`
 6. Wait for fts-oidc REST
 7. **fts-oidc OIDC token auth check** (verifies `method=oauth2` on whoami)
 8. **XRootD TPC test**
@@ -295,7 +295,7 @@ The CI runs on both amd64 and arm64 runners — arm64 uses QEMU to emulate the S
 
 `fts` (port 8446) runs the classic GSI stack — host certificate auth, VOMS proxy delegation, X.509 client-cert transfer. Used for XRootD, WebDAV, and S3 tests.
 
-`fts-oidc` (port 8447) runs on the same image but is configured for OIDC bearer token auth (`fts3restconfig-oidc`: `AuthorizedVO=*`, `AllowNonManagedTokens=True`, `AllowedOAuth2IssuerURLs=http://keycloak:8080/realms/rucio`). Used for StoRM WebDAV TPC and the Rucio OIDC conveyor path.
+`fts-oidc` (port 8447) runs on the same image but is configured for OIDC bearer token auth (`fts3restconfig-oidc`: `AuthorizedVO=*`, `AllowNonManagedTokens=True`, `AllowedOAuth2IssuerURLs=https://keycloak:8443/realms/rucio`). Used for StoRM WebDAV TPC and the Rucio OIDC conveyor path.
 
 Running them side-by-side lets the testbed demonstrate both auth models without requiring a restart or config swap.
 
@@ -331,7 +331,7 @@ Additional settings for the OIDC path (`oidc-server.cfg`):
 ```ini
 [oidc]
 idpsecrets = /opt/rucio/etc/idpsecrets.json
-issuer = http://keycloak:8080/realms/rucio
+issuer = https://keycloak:8443/realms/rucio
 expected_audience = rucio-oidc
 admin_issuer = rucio-oidc
 

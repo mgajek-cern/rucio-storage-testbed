@@ -92,15 +92,15 @@ jobs:
       - name: Wait for Keycloak
         run: |
           for i in $(seq 1 40); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' \
-              http://localhost:8080/realms/rucio/.well-known/openid-configuration) || true
+            code=$(curl -skv -o /dev/null -w '%{http_code}' \
+              https://localhost:8443/realms/rucio/.well-known/openid-configuration) || true
             [[ "$code" == "200" ]] && { echo "Keycloak ready"; exit 0; }
             echo "  [$i] HTTP $code"; sleep 5
           done
           docker compose -f ${{ inputs.compose_file }} logs keycloak; exit 1
 
       - name: Bootstrap Rucio (seeds RSEs + token provider + restarts storm/fts-oidc)
-        run: ./scripts/rucio-init.sh
+        run: ./scripts/bootstrap-testbed.sh
 
       - name: Wait for fts-oidc
         run: |
@@ -118,7 +118,7 @@ jobs:
           TOKEN=$(docker exec rucio-storage-testbed-fts-oidc-1 curl -sk \
             -u "rucio-oidc:rucio-oidc-secret" \
             -d "grant_type=password&username=jdoe2&password=secret" \
-            http://keycloak:8080/realms/rucio/protocol/openid-connect/token \
+            https://keycloak:8443/realms/rucio/protocol/openid-connect/token \
             | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
           [ -z "$TOKEN" ] && { echo "Failed to obtain token"; exit 1; }
 
@@ -145,7 +145,10 @@ jobs:
       - name: StoRM WebDAV HTTP TPC test (OIDC token, no GSI)
         run: ./scripts/test-fts-with-storm-webdav.sh
 
-      - name: Rucio XRD1 → XRD2 transfer test
+      - name: XRootD TPC test (OIDC token, no GSI)
+        run: ./scripts/test-fts-with-xrootd-scitokens.sh
+
+      - name: Rucio transfer test
         run: ./scripts/test-rucio-transfers.sh
 
       - name: Dump logs on failure

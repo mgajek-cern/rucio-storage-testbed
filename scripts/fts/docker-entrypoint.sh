@@ -5,6 +5,18 @@ set -o pipefail
 # wait for MySQL readiness
 /usr/local/bin/wait-for-it.sh -h ftsdb -p 3306 -t 3600
 
+# Update System Trust Store (The fix for OIDC discovery)
+# Only copy if the file exists and update the OS trust
+if [ -f /etc/grid-security/certificates/5fca1cb1.0 ]; then
+    cp /etc/grid-security/certificates/5fca1cb1.0 /etc/pki/ca-trust/source/anchors/rucio_ca.crt
+    update-ca-trust
+
+    # Explicitly append to the bundle Python often uses
+    cat /etc/grid-security/certificates/5fca1cb1.0 >> /etc/pki/tls/certs/ca-bundle.crt
+
+    echo "OS Trust Store updated with Rucio CA"
+fi
+
 # initialise / upgrade the database (ignore non-fatal upgrade errors)
 /usr/share/fts/fts-database-upgrade.py -y || true
 

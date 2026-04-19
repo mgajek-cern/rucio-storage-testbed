@@ -13,13 +13,13 @@ STORM2=rucio-storage-testbed-storm2-1
 FTS_OIDC_CONTAINER=rucio-storage-testbed-fts-oidc-1
 
 # ── Token management ──────────────────────────────────────────────────────────
-# Fetch token from inside fts-oidc container so iss=http://keycloak:8080/realms/rucio
+# Fetch token from inside fts-oidc container so iss=https://keycloak:8443/realms/rucio
 # matching what StoRM's application.yml registers as the trusted issuer.
 fetch_token() {
   docker exec "$FTS_OIDC_CONTAINER" curl -sk \
     -u "rucio-oidc:rucio-oidc-secret" \
     -d "grant_type=password&username=jdoe2&password=secret" \
-    http://keycloak:8080/realms/rucio/protocol/openid-connect/token \
+    https://keycloak:8443/realms/rucio/protocol/openid-connect/token \
     | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])"
 }
 

@@ -61,7 +61,7 @@
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "config": {
-            "included.custom.audience": "fts-oidc,STORM1,STORM2,storm1,storm2,rucio-oidc",
+            "included.custom.audience": "fts-oidc,STORM1,STORM2,storm1,storm2,rucio-oidc,https://xrd3:1094,https://xrd4:1094",
             "access.token.claim": "true"
           }
         }
@@ -71,10 +71,18 @@
         "oauth2.device.authorization.grant.enabled": "false",
         "backchannel.logout.session.required": "true",
         "backchannel.logout.revoke.offline.tokens": "false",
-        "token.exchange.standard.flow.enabled": "true"
+        "token.exchange.standard.flow.enabled": "true",
+        "can.delegate.tokens": "true"
       }
     },
-    { "clientId": "fts-oidc", "enabled": true, "publicClient": false, "clientAuthenticatorType": "client-secret", "secret": "fts-oidc-secret" },
+    {
+      "clientId": "fts-oidc",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "fts-oidc-secret",
+      "defaultClientScopes": [ "openid", "wlcg", "fts" ]
+    },
     { "clientId": "storm1", "enabled": true, "publicClient": true },
     { "clientId": "storm2", "enabled": true, "publicClient": true },
     { "clientId": "STORM1", "enabled": true, "publicClient": true },

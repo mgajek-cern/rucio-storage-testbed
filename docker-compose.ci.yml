@@ -2,13 +2,16 @@ services:
   fts:
     image: mgajekcern/test-fts:latest
     hostname: fts
+    environment:
+      - REQUESTS_CA_BUNDLE=/etc/pki/tls/certs/ca-bundle.crt
+      - SSL_CERT_FILE=/etc/pki/tls/certs/ca-bundle.crt
     ports:
       - "8446:8446"
       - "8449:8449"
     depends_on:
       - ftsdb
     networks:
-      - fts
+      - rucio-storage-testbed
     volumes:
       - ./certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
       - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
@@ -32,7 +35,7 @@ services:
     ports:
       - "3306:3306"
     networks:
-      - fts
+      - rucio-storage-testbed
     volumes:
       - ftsdb-data:/var/lib/mysql
 
@@ -44,24 +47,76 @@ services:
     ports:
       - "1094:1094"
     networks:
-      - fts
+      - rucio-storage-testbed
     volumes:
       - ./certs/xrdcert.pem:/tmp/xrdcert.pem:ro
       - ./certs/xrdkey.pem:/tmp/xrdkey.pem:ro
       - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ./config/xrootd/grid-mapfile:/etc/grid-security/grid-mapfile:ro
     entrypoint: >
       bash -c "
-        echo '\"/CN=fts\" xrootd' > /etc/grid-security/grid-mapfile &&
-        echo '\"/CN=fts/CN=proxy\" xrootd' >> /etc/grid-security/grid-mapfile &&
-        echo '\"/CN=xrd\" xrootd' >> /etc/grid-security/grid-mapfile &&
-        echo '\"/O=Dummy\" xrootd' >> /etc/grid-security/grid-mapfile &&
-        echo '\"/O=Dummy/CN=proxy\" xrootd' >> /etc/grid-security/grid-mapfile &&
-        echo 'setenv XrdSecGSISRVNAMES = *' >> /etc/xrootd/xrdrucio.cfg &&
         mkdir -p /rucio &&
         echo 'fts-test' > /rucio/fts-test-file &&
         chown xrootd:xrootd /rucio/fts-test-file &&
         /docker-entrypoint.sh
       "
+
+  xrd2:
+    image: rucio/test-xrootd@sha256:27d212ec136d6d2ed7029fc445384053acb551805060cae554597a32e6361df4
+    hostname: xrd2
+    environment:
+      - XRDPORT=1094
+    ports:
+      - "1095:1094"
+    networks:
+      - rucio-storage-testbed
+    volumes:
+      - ./certs/xrdcert.pem:/tmp/xrdcert.pem:ro
+      - ./certs/xrdkey.pem:/tmp/xrdkey.pem:ro
+      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ./config/xrootd/grid-mapfile:/etc/grid-security/grid-mapfile:ro
+
+  xrd3:
+    build:
+      context: .
+      dockerfile: Dockerfile.xrd-scitokens
+    image: local/test-xrootd-scitokens:latest
+    hostname: xrd3
+    environment:
+      - XRDPORT=1094
+    ports:
+      - "1096:1094"
+    networks:
+      - rucio-storage-testbed
+    volumes:
+      - ./certs/xrdcert.pem:/tmp/xrdcert.pem:ro
+      - ./certs/xrdkey.pem:/tmp/xrdkey.pem:ro
+      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ./config/xrootd/xrdrucio.cfg:/etc/xrootd/xrdrucio.cfg.tmpl:ro
+      - ./config/xrootd/authdb:/etc/xrootd/authdb:ro
+      - ./config/xrootd/scitokens.conf:/etc/xrootd/scitokens.conf:ro
+      - ./scripts/xrootd/docker-entrypoint-oidc.sh:/usr/local/bin/docker-entrypoint.sh:ro
+
+  xrd4:
+    build:
+      context: .
+      dockerfile: Dockerfile.xrd-scitokens
+    image: local/test-xrootd-scitokens:latest
+    hostname: xrd4
+    environment:
+      - XRDPORT=1094
+    ports:
+      - "1097:1094"
+    networks:
+      - rucio-storage-testbed
+    volumes:
+      - ./certs/xrdcert.pem:/tmp/xrdcert.pem:ro
+      - ./certs/xrdkey.pem:/tmp/xrdkey.pem:ro
+      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ./config/xrootd/xrdrucio.cfg:/etc/xrootd/xrdrucio.cfg.tmpl:ro
+      - ./config/xrootd/authdb:/etc/xrootd/authdb:ro
+      - ./config/xrootd/scitokens.conf:/etc/xrootd/scitokens.conf:ro
+      - ./scripts/xrootd/docker-entrypoint-oidc.sh:/usr/local/bin/docker-entrypoint.sh:ro
 
   # FTS OIDC instance — bearer token auth, no GSI proxy
   ftsdb-oidc:
@@ -73,7 +128,7 @@ services:
       - MYSQL_ROOT_PASSWORD=fts
       - MYSQL_DATABASE=fts
     networks:
-      - fts
+      - rucio-storage-testbed
     volumes:
       - ftsdb-oidc-data:/var/lib/mysql
     healthcheck:
@@ -85,6 +140,9 @@ services:
   fts-oidc:
     image: mgajekcern/test-fts:latest
     hostname: fts-oidc
+    environment:
+      - REQUESTS_CA_BUNDLE=/etc/pki/tls/certs/ca-bundle.crt
+      - SSL_CERT_FILE=/etc/pki/tls/certs/ca-bundle.crt
     ports:
       - "8447:8446"
     depends_on:
@@ -93,7 +151,7 @@ services:
       keycloak:
         condition: service_started
     networks:
-      - fts
+      - rucio-storage-testbed
     volumes:
       - ./certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
       - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
@@ -102,7 +160,7 @@ services:
       - ./config/fts/fts3config-oidc:/etc/fts3/fts3config:ro
       - ./config/fts/fts3restconfig-oidc:/etc/fts3/fts3restconfig:ro
       - ./config/fts/gfal2_http_plugin.conf:/etc/gfal2.d/http_plugin.conf:ro
-      - ./scripts/fts/docker-entrypoint-fts-oidc.sh:/docker-entrypoint.sh:ro
+      - ./scripts/fts/docker-entrypoint-oidc.sh:/docker-entrypoint.sh:ro
       - ./patches/fts/middleware.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/config/middleware.py:ro
       - ./patches/fts/openidconnect.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/lib/openidconnect.py:ro
     healthcheck:
@@ -111,30 +169,6 @@ services:
       timeout: 5s
       start_period: 60s
       retries: 20
-
-  xrd2:
-    image: rucio/test-xrootd@sha256:27d212ec136d6d2ed7029fc445384053acb551805060cae554597a32e6361df4
-    hostname: xrd2
-    environment:
-      - XRDPORT=1094
-    ports:
-      - "1095:1094"
-    networks:
-      - fts
-    volumes:
-      - ./certs/xrdcert.pem:/tmp/xrdcert.pem:ro
-      - ./certs/xrdkey.pem:/tmp/xrdkey.pem:ro
-      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
-    entrypoint: >
-      bash -c "
-        echo '\"/CN=fts\" xrootd' > /etc/grid-security/grid-mapfile &&
-        echo '\"/CN=fts/CN=proxy\" xrootd' >> /etc/grid-security/grid-mapfile &&
-        echo '\"/CN=xrd\" xrootd' >> /etc/grid-security/grid-mapfile &&
-        echo '\"/O=Dummy\" xrootd' >> /etc/grid-security/grid-mapfile &&
-        echo '\"/O=Dummy/CN=proxy\" xrootd' >> /etc/grid-security/grid-mapfile &&
-        echo 'setenv XrdSecGSISRVNAMES = *' >> /etc/xrootd/xrdrucio.cfg &&
-        /docker-entrypoint.sh
-      "
 
   minio1:
     image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
@@ -147,7 +181,7 @@ services:
       - "9000:9000"
       - "9001:9001"
     networks:
-      - fts
+      - rucio-storage-testbed
     volumes:
       - minio1-data:/data
     healthcheck:
@@ -167,7 +201,7 @@ services:
       - "9002:9000"
       - "9003:9001"
     networks:
-      - fts
+      - rucio-storage-testbed
     volumes:
       - minio2-data:/data
     healthcheck:
@@ -182,7 +216,7 @@ services:
       minio1:
         condition: service_healthy
     networks:
-      - fts
+      - rucio-storage-testbed
     entrypoint: >
       sh -c "
         mc alias set local http://minio1:9000 minioadmin minioadmin &&
@@ -198,7 +232,7 @@ services:
       minio2:
         condition: service_healthy
     networks:
-      - fts
+      - rucio-storage-testbed
     entrypoint: >
       sh -c "
         mc alias set local http://minio2:9000 minioadmin minioadmin &&
@@ -214,7 +248,7 @@ services:
     ports:
       - "443:443"
     networks:
-      - fts
+      - rucio-storage-testbed
     volumes:
       - ./certs/webdav1cert.pem:/etc/grid-security/hostcert.pem:ro
       - ./certs/webdav1key.pem:/etc/grid-security/hostkey.pem:ro
@@ -237,7 +271,7 @@ services:
     ports:
       - "444:443"
     networks:
-      - fts
+      - rucio-storage-testbed
     volumes:
       - ./certs/webdav2cert.pem:/etc/grid-security/hostcert.pem:ro
       - ./certs/webdav2key.pem:/etc/grid-security/hostkey.pem:ro
@@ -259,12 +293,12 @@ services:
     platform: linux/amd64
     hostname: storm1
     ports:
-      - "8443:8443"
+      - "8440:8443"
       - "8085:8085"
     depends_on:
       - keycloak
     networks:
-      - fts
+      - rucio-storage-testbed
     environment:
       - STORM_WEBDAV_HOSTNAME_0=storm1
       - STORM_WEBDAV_HTTPS_PORT=8443
@@ -279,8 +313,8 @@ services:
       - STORM_WEBDAV_AUTHZ_SERVER_ISSUER=https://storm1:8443
       - STORM_WEBDAV_AUTHZ_SERVER_SECRET=supersupersupersecretlongerthan32chars!
       - STORM_WEBDAV_OAUTH_ISSUERS_REFRESH_PERIOD_MINUTES=1
-      # Load issuers + policies via Spring profiles (matches official storm-webdav compose)
-      - STORM_WEBDAV_JVM_OPTS=-Xms256m -Xmx512m -Djava.security.egd=file:/dev/./urandom -Dspring.profiles.active=issuers,policies
+      # FIX: Point JVM to our custom truststore
+      - STORM_WEBDAV_JVM_OPTS=-Xms256m -Xmx512m -Djava.security.egd=file:/dev/./urandom -Dspring.profiles.active=issuers,policies -Djavax.net.ssl.trustStore=/etc/grid-security/rucio-truststore.jks -Djavax.net.ssl.trustStorePassword=changeit
     volumes:
       - ./certs/storm1cert.pem:/etc/grid-security/hostcert.pem:ro
       - ./certs/storm1key.pem:/etc/grid-security/hostkey.pem:ro
@@ -289,6 +323,7 @@ services:
       - ./config/storm-webdav/storm-application-issuers.yml:/app/application-issuers.yml:ro
       - ./config/storm-webdav/storm-application-policies.yml:/app/application-policies.yml:ro
       - ./config/storm-webdav/data.properties:/etc/storm/webdav/sa.d/data.properties:ro
+      - ./certs/rucio-truststore.jks:/etc/grid-security/rucio-truststore.jks:ro
       - storm1-data:/storage/data
       - vomsdir:/etc/grid-security/vomsdir
     healthcheck:
@@ -303,12 +338,12 @@ services:
     platform: linux/amd64
     hostname: storm2
     ports:
-      - "8444:8443"
+      - "8441:8443"
       - "8086:8085"
     depends_on:
       - keycloak
     networks:
-      - fts
+      - rucio-storage-testbed
     environment:
       - STORM_WEBDAV_HOSTNAME_0=storm2
       - STORM_WEBDAV_HTTPS_PORT=8443
@@ -323,7 +358,8 @@ services:
       - STORM_WEBDAV_AUTHZ_SERVER_ISSUER=https://storm2:8443
       - STORM_WEBDAV_AUTHZ_SERVER_SECRET=supersupersupersecretlongerthan32chars!
       - STORM_WEBDAV_OAUTH_ISSUERS_REFRESH_PERIOD_MINUTES=1
-      - STORM_WEBDAV_JVM_OPTS=-Xms256m -Xmx512m -Djava.security.egd=file:/dev/./urandom -Dspring.profiles.active=issuers,policies
+      # FIX: Point JVM to our custom truststore
+      - STORM_WEBDAV_JVM_OPTS=-Xms256m -Xmx512m -Djava.security.egd=file:/dev/./urandom -Dspring.profiles.active=issuers,policies -Djavax.net.ssl.trustStore=/etc/grid-security/rucio-truststore.jks -Djavax.net.ssl.trustStorePassword=changeit
     volumes:
       - ./certs/storm2cert.pem:/etc/grid-security/hostcert.pem:ro
       - ./certs/storm2key.pem:/etc/grid-security/hostkey.pem:ro
@@ -331,6 +367,7 @@ services:
       - ./config/storm-webdav/storm-application-issuers.yml:/app/application-issuers.yml:ro
       - ./config/storm-webdav/storm-application-policies.yml:/app/application-policies.yml:ro
       - ./config/storm-webdav/data.properties:/etc/storm/webdav/sa.d/data.properties:ro
+      - ./certs/rucio-truststore.jks:/etc/grid-security/rucio-truststore.jks:ro
       - storm2-data:/storage/data
       - vomsdir:/etc/grid-security/vomsdir
     healthcheck:
@@ -343,22 +380,41 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:23.0.1
     hostname: keycloak
-    command: start-dev --features=token-exchange --health-enabled=true --import-realm
+    command:
+      - start-dev
+      - --features=token-exchange
+      - --health-enabled=true
+      - --import-realm
     environment:
       - KEYCLOAK_ADMIN=admin
       - KEYCLOAK_ADMIN_PASSWORD=admin
+      # HTTPS configuration — the issuer claim in JWTs will use this.
+      - KC_HTTPS_CERTIFICATE_FILE=/etc/x509/https/keycloakcert.pem
+      - KC_HTTPS_CERTIFICATE_KEY_FILE=/etc/x509/https/keycloakkey.pem
+      - KC_HOSTNAME=keycloak
+      - KC_HOSTNAME_STRICT=false
+      - KC_HOSTNAME_STRICT_HTTPS=false
+      # Keep HTTP enabled too so old healthchecks / dev tools still work
+      # during the migration. Remove this once everything is on HTTPS.
+      - KC_HTTP_ENABLED=true
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8443:8443"
     networks:
-      - fts
+      - rucio-storage-testbed
     volumes:
       - ./config/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
+      - ./certs/keycloakcert.pem:/etc/x509/https/keycloakcert.pem:ro
+      - ./certs/keycloakkey.pem:/etc/x509/https/keycloakkey.pem:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health/ready || exit 1"]
+      # Use HTTPS so we know TLS is actually serving, not just HTTP.
+      # --no-check-certificate because the cert is signed by the rucio
+      # dev CA, not a public CA — wget inside the keycloak image doesn't
+      # have it in its trust store, and that's fine for liveness.
+      test: ["CMD-SHELL", "curl -sk --fail https://localhost:8443/health/ready || exit 1"]
       interval: 10s
       timeout: 10s
       start_period: 120s
-      retries: 30
 
   ruciodb:
     image: postgres:14
@@ -368,7 +424,7 @@ services:
       - POSTGRES_PASSWORD=rucio
       - POSTGRES_DB=rucio
     networks:
-      - fts
+      - rucio-storage-testbed
     volumes:
       - ruciodb-data:/var/lib/postgresql/data
     healthcheck:
@@ -385,7 +441,7 @@ services:
       - POSTGRES_PASSWORD=rucio
       - POSTGRES_DB=rucio
     networks:
-      - fts
+      - rucio-storage-testbed
     volumes:
       - ruciodb-oidc-data:/var/lib/postgresql/data
     healthcheck:
@@ -398,6 +454,8 @@ services:
   rucio:
     image: rucio/rucio-server@sha256:0d81e6c85616106443814a9c3193e13452da6a36de3d4569a7c9ca2d94db62b1
     hostname: rucio
+    environment:
+      - REQUESTS_CA_BUNDLE=/etc/grid-security/certificates/rucio_ca.pem
     ports:
       - "8445:80"
     depends_on:
@@ -406,7 +464,7 @@ services:
       fts:
         condition: service_healthy
     networks:
-      - fts
+      - rucio-storage-testbed
     entrypoint:
       - bash
       - -c
@@ -432,6 +490,8 @@ services:
   rucio-oidc:
     image: rucio/rucio-server@sha256:0d81e6c85616106443814a9c3193e13452da6a36de3d4569a7c9ca2d94db62b1
     hostname: rucio-oidc
+    environment:
+      - REQUESTS_CA_BUNDLE=/etc/grid-security/certificates/rucio_ca.pem
     ports:
       - "8448:80"
     depends_on:
@@ -442,7 +502,7 @@ services:
       keycloak:
         condition: service_started
     networks:
-      - fts
+      - rucio-storage-testbed
     entrypoint:
       - bash
       - -c
@@ -475,7 +535,7 @@ services:
       rucio:
         condition: service_healthy
     networks:
-      - fts
+      - rucio-storage-testbed
     environment:
       - RUCIO_CFG_CLIENT_RUCIO_HOST=http://rucio
       - RUCIO_CFG_CLIENT_AUTH_HOST=http://rucio
@@ -483,6 +543,7 @@ services:
       - RUCIO_CFG_CLIENT_USERNAME=ddmlab
       - RUCIO_CFG_CLIENT_PASSWORD=secret
       - RUCIO_CFG_CLIENT_ACCOUNT=root
+      - REQUESTS_CA_BUNDLE=/etc/grid-security/certificates/rucio_ca.pem
     volumes:
       - ./certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
       - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
@@ -494,7 +555,7 @@ services:
     command: ["/bin/bash", "-c", "while true; do sleep 60; done"]
 
 networks:
-  fts:
+  rucio-storage-testbed:
 
 volumes:
   ftsdb-data:

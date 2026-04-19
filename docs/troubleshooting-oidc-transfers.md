@@ -14,11 +14,11 @@ All of keycloak, fts-oidc, rucio-oidc, storm1, storm2 must be `healthy`. If any 
 
 ```bash
 docker exec rucio-storage-testbed-rucio-oidc-1 curl -sf \
-  http://keycloak:8080/realms/rucio/.well-known/openid-configuration \
+  https://keycloak:8443/realms/rucio/.well-known/openid-configuration \
   | jq -r .issuer
 ```
 
-Expect: `http://keycloak:8080/realms/rucio`. If 404, Keycloak hasn't imported the realm — check `./config/keycloak/realm.json` mount and logs.
+Expect: `https://keycloak:8443/realms/rucio`. If 404, Keycloak hasn't imported the realm — check `./config/keycloak/realm.json` mount and logs.
 
 ## 2. Client credentials grant works
 
@@ -26,7 +26,7 @@ Expect: `http://keycloak:8080/realms/rucio`. If 404, Keycloak hasn't imported th
 docker exec rucio-storage-testbed-rucio-oidc-1 curl -s \
   -u "rucio-oidc:rucio-oidc-secret" \
   -d "grant_type=client_credentials&scope=fts" \
-  http://keycloak:8080/realms/rucio/protocol/openid-connect/token \
+  https://keycloak:8443/realms/rucio/protocol/openid-connect/token \
   | jq -r '.access_token // .error_description'
 ```
 
@@ -41,7 +41,7 @@ for scope in "storage.read:/data" "storage.modify:/data"; do
   code=$(docker exec rucio-storage-testbed-rucio-oidc-1 curl -s \
     -u "rucio-oidc:rucio-oidc-secret" \
     -d "grant_type=client_credentials&scope=${scope}" \
-    http://keycloak:8080/realms/rucio/protocol/openid-connect/token \
+    https://keycloak:8443/realms/rucio/protocol/openid-connect/token \
     | jq -r '.error // "OK"')
   echo "  ${scope}: ${code}"
 done
@@ -122,7 +122,7 @@ docker exec rucio-storage-testbed-storm1-1 curl -sk \
   https://storm2:8443/data/ -o /dev/null -w '%{http_code}\n'
 ```
 
-Expect `207`. If `401`/`500`, storm2 can't validate the JWT — check the Keycloak JWKS reachability and that `application-issuers.yml` lists `http://keycloak:8080/realms/rucio` as a trusted issuer.
+Expect `207`. If `401`/`500`, storm2 can't validate the JWT — check the Keycloak JWKS reachability and that `application-issuers.yml` lists `https://keycloak:8443/realms/rucio` as a trusted issuer.
 
 ## 7. End-to-end: Rucio conveyor → FTS → StoRM
 

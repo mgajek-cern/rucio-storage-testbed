@@ -2,6 +2,7 @@
 *.key
 *.srl
 *.csr
+rucio-truststore.jks
 *.namespaces
 *.signing_policy
 storm-cacerts

@@ -4,4 +4,4 @@ oauth:
   enable-oidc: true
   issuers:
     - name: keycloak-rucio
-      issuer: http://keycloak:8080/realms/rucio
+      issuer: https://keycloak:8443/realms/rucio

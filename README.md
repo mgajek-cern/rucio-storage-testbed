@@ -12,7 +12,7 @@ Multi-architecture Rucio + FTS3 integration testbed with XRootD, WebDAV, S3, Sto
 docker compose up -d
 
 # 3. Bootstrap Rucio (accounts, RSEs, OIDC identities, token providers)
-./scripts/rucio-init.sh
+./scripts/bootstrap-testbed.sh
 
 # 4. Run transfer tests
 ./scripts/test-rucio-transfers.sh
@@ -27,11 +27,11 @@ docker compose up -d
 | `fts-oidc` | FTS3 transfer server (OIDC bearer token auth) | 8447 |
 | `rucio` | Rucio server — userpass auth | 8445 |
 | `rucio-oidc` | Rucio server — OIDC auth via Keycloak | 8448 |
-| `keycloak` | OIDC identity provider (token exchange enabled) | 8080 |
+| `keycloak` | OIDC identity provider (token exchange enabled) | 8443 |
 | `xrd1` / `xrd2` | XRootD storage endpoints | 1094 / 1095 |
 | `webdav1` / `webdav2` | WebDAV storage endpoints (Apache mod_dav) | 443 / 444 |
 | `minio1` / `minio2` | S3-compatible storage | 9000 / 9002 |
-| `storm1` / `storm2` | StoRM WebDAV (HTTP TPC + OIDC token auth) | 8443 / 8444 |
+| `storm1` / `storm2` | StoRM WebDAV (HTTP TPC + OIDC token auth) | 8440 / 8441 |
 
 ## Accounts
 
@@ -62,7 +62,7 @@ docker compose up -d
 ## TODO
 
 - [x] Bearer token delegation from rucio-oidc conveyor to fts-oidc for STORM RSEs (pending Rucio version support for OIDC token forwarding in conveyor)
-- [ ] XRootD SciTokens: add xrd3/xrd4 with xrootd-scitokens plugin for full bearer token TPC on `root://` protocol
+- [x] XRootD SciTokens: add xrd3/xrd4 with xrootd-scitokens plugin for full bearer token TPC on `root://` protocol
 - ~~[ ] intertwin/teapot: evaluate as a multi-tenancy StoRM WebDAV front-end for WLCG token scenarios~~
 - [ ] k8s tutorial — map and organize knowledge within the forked repository
 

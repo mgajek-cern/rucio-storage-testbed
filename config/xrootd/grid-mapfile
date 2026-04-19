@@ -1,0 +1,5 @@
+"/CN=fts" xrootd
+"/CN=fts/CN=proxy" xrootd
+"/CN=xrd" xrootd
+"/O=Dummy" xrootd
+"/O=Dummy/CN=proxy" xrootd

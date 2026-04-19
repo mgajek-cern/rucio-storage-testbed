@@ -1,0 +1,3 @@
+# `u * /data a` = all users, full access on /data. Fine for a testbed; in
+# production this should be `lr` (list+read) at most for unauthenticated.
+u * /data a

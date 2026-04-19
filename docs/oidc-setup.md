@@ -14,7 +14,7 @@ The OIDC path replaces the traditional GSI proxy delegation used by the classic 
 ## Keycloak
 
 **Realm:** `rucio`
-**URL:** `http://localhost:8080/realms/rucio`
+**URL:** `https://localhost:8443/realms/rucio`
 **Admin:** `admin` / `admin`
 
 The realm is imported from `config/keycloak/realm.json` on startup. Key settings:
@@ -42,9 +42,9 @@ Update the example to include the `fts` and `offline_access` scopes, as this is 
 
 ```bash
 # Verify fts and offline_access scopes
-curl -s -u "rucio-oidc:rucio-oidc-secret" \
+curl -skv -u "rucio-oidc:rucio-oidc-secret" \
   -d "grant_type=password&username=jdoe2&password=secret&scope=openid fts offline_access" \
-  http://localhost:8080/realms/rucio/protocol/openid-connect/token | jq .
+  https://localhost:8443/realms/rucio/protocol/openid-connect/token | jq .
 ```
 
 ### Client: `rucio-oidc`
@@ -77,9 +77,9 @@ An audience mapper adds `aud: rucio-oidc` to all access tokens (required for FTS
 ### Fetch a token manually
 
 ```bash
-curl -sk -u "rucio-oidc:rucio-oidc-secret" \
+curl -skv -u "rucio-oidc:rucio-oidc-secret" \
   -d "grant_type=password&username=jdoe2&password=secret" \
-  http://localhost:8080/realms/rucio/protocol/openid-connect/token \
+  https://localhost:8443/realms/rucio/protocol/openid-connect/token \
   | python3 -c "import sys,json; t=json.load(sys.stdin); print(t['access_token'])"
 ```
 
@@ -103,13 +103,13 @@ Both bugs produced a mismatch between the providers dict key (slash-normalized) 
 
 ### Token provider registration
 
-fts-oidc requires a row in `t_token_provider` for each trusted issuer. `rucio-init.sh` inserts both slash variants to satisfy the FK constraint:
+fts-oidc requires a row in `t_token_provider` for each trusted issuer. `bootstrap-testbed.sh` inserts both slash variants to satisfy the FK constraint:
 
 ```sql
 INSERT IGNORE INTO t_token_provider (name, issuer, client_id, client_secret)
 VALUES
-  ('keycloak-rucio',       'http://keycloak:8080/realms/rucio',  'rucio-oidc', 'rucio-oidc-secret'),
-  ('keycloak-rucio-slash', 'http://keycloak:8080/realms/rucio/', 'rucio-oidc', 'rucio-oidc-secret');
+  ('keycloak-rucio',       'https://keycloak:8443/realms/rucio',  'rucio-oidc', 'rucio-oidc-secret'),
+  ('keycloak-rucio-slash', 'https://keycloak:8443/realms/rucio/', 'rucio-oidc', 'rucio-oidc-secret');
 ```
 
 The `t_token.audience` column is made nullable because Keycloak Community Edition tokens have no `aud` claim by default:
@@ -124,7 +124,7 @@ ALTER TABLE t_token MODIFY COLUMN audience varchar(1024) NULL;
 TOKEN=$(docker exec rucio-storage-testbed-fts-oidc-1 curl -sk \
   -u "rucio-oidc:rucio-oidc-secret" \
   -d "grant_type=password&username=jdoe2&password=secret" \
-  http://keycloak:8080/realms/rucio/protocol/openid-connect/token \
+  https://keycloak:8443/realms/rucio/protocol/openid-connect/token \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 curl -sk --cacert certs/rucio_ca.pem \
