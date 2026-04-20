@@ -1,4 +1,4 @@
-name: Build multi-arch FTS image
+name: Build multi-arch images
 
 on:
   workflow_dispatch:
@@ -6,6 +6,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: fts
+            file: ./Dockerfile.fts
+            image: test-fts
+          - name: xrd-scitokens
+            file: ./Dockerfile.xrd-scitokens
+            image: test-xrd-scitokens
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,15 +33,15 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push multi-arch FTS image
+      - name: Build and push ${{ matrix.name }}
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile.fts
+          file: ${{ matrix.file }}
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/test-fts:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/test-fts:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

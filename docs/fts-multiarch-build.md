@@ -1,24 +1,33 @@
-# FTS3 Multi-Architecture Image Build
+# Multi-Architecture Image Builds
 
-The `Dockerfile` in this repository builds a multi-architecture (`linux/amd64`, `linux/arm64`) FTS3 server image, enabling use of [rucio/k8s-tutorial](https://github.com/rucio/k8s-tutorial) on Apple Silicon Macs. The official `rucio/test-fts` image is x86_64 only.
+This repository provides custom `Dockerfile`s to build multi-architecture (`linux/amd64`, `linux/arm64`) images for the critical middleware components that lack official ARM support. This enables full integration testing on Apple Silicon Macs.
 
-The official x86_64 reference image is maintained in [rucio/containers](https://github.com/rucio/containers/tree/master/test-fts). This repository replicates that setup with a source-based build to support arm64.
+## Images in this repository
+
+1. **FTS3 Server (`Dockerfile.fts`):** Replaces `rucio/test-fts`. Includes patches for OIDC provider trailing-slash issues.
+2. **XRootD SciTokens (`Dockerfile.xrd-scitokens`):** Adds the SciTokens plugin to the base XRootD image to enable bearer-token TPC on `root://` protocols.
 
 ## CI build (GitHub Actions)
 
-The image is built on manual trigger via `.github/workflows/build-fts-multiarch.yml` using QEMU on an `ubuntu-latest` runner and pushed to Docker Hub.
-
-> Cross-compilation for `linux/arm64` via QEMU is slow — expect 45–90 minutes for a full build.
+Images are built via `.github/workflows/build-images.yml` using a build matrix.
+> **Note:** Cross-compilation for `arm64` via QEMU is resource-intensive. FTS3 takes ~60 minutes; XRootD takes ~20 minutes.
 
 ## Local build
 
 ```bash
 # Current platform only (fast)
-docker build -t test-fts:local .
+docker build -t test-fts:local -f Dockerfile.fts .
 
 # Multi-arch (requires buildx)
 docker buildx create --use
-docker buildx build --platform linux/amd64,linux/arm64 -t test-fts:local .
+docker buildx build --platform linux/amd64,linux/arm64 \
+    -t test-fts:local \
+    -f Dockerfile.fts .
+
+# Example for XRootD SciTokens
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -t test-xrd-scitokens:local \
+  -f Dockerfile.xrd-scitokens .
 ```
 
 ## Known issues on macOS (Apple Silicon)
@@ -30,4 +39,4 @@ Warning  Failed  kubelet  Failed to pull image "rucio/test-fts":
          no matching manifest for linux/arm64/v8 in the manifest list entries
 ```
 
-**Fix:** use the image built by this repository (`mgajekcern/test-fts`) instead.
+**Fix:** use the image built by this repository (`mgajekcern/test-fts`, `test-xrd-scitokens`) instead.

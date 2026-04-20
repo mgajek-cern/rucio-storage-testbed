@@ -54,13 +54,14 @@ docker compose up -d
 
 ## Tests
 
-```bash
-./scripts/test-fts-with-xrootd.py        # FTS + XRootD TPC (GSI proxy)
-./scripts/test-fts-with-s3.sh            # FTS + S3/MinIO
-./scripts/test-fts-with-webdav.sh        # FTS + WebDAV (Apache mod_dav)
-./scripts/test-fts-with-storm-webdav.sh  # fts-oidc + StoRM WebDAV HTTP TPC (OIDC token)
-./scripts/test-rucio-transfers.sh        # Rucio end-to-end (userpass + OIDC)
-```
+| Protocol / Target | Auth Model | Execution Command |
+| :--- | :--- | :--- |
+| **XRootD TPC** | GSI Proxy | `docker exec -it rucio-storage-testbed-fts-1 python3 /scripts/test-fts-with-xrootd.py` |
+| **S3 / MinIO** | Signed URLs | `./scripts/test-fts-with-s3.sh` |
+| **WebDAV** | GSI Proxy | `./scripts/test-fts-with-webdav.sh` |
+| **StoRM WebDAV** | OIDC Token | `./scripts/test-fts-with-storm-webdav.sh` |
+| **XRootD TPC** | SciTokens | `./scripts/test-fts-with-xrootd-scitokens.sh` |
+| **Rucio E2E** | Multi-auth | `./scripts/test-rucio-transfers.sh` |
 
 ## Documentation
 
