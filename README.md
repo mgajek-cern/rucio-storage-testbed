@@ -11,7 +11,7 @@ Multi-architecture Rucio + FTS3 integration testbed with XRootD, WebDAV, S3, Sto
 - **Infrastructure-as-Code Bootstrap:** Automated setup of the entire Rucio topology, distances and OIDC identity providers in one command.
 - **Resilient Test Suite:** Built-in validation of Rucio rule states, lock counts and Adler32 checksum streaming for minimal storage images.
 
-> Future work includes K8s migration, failure injection and federation. See [ROADMAP.md](./ROADMAP.md).
+> Future work includes reference implementations using the `rucio-clients`, K8s migration, failure injection and federation. See [ROADMAP.md](./ROADMAP.md).
 
 ## Quick start
 
