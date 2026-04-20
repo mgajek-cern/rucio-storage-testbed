@@ -77,10 +77,7 @@ services:
       - ./config/xrootd/grid-mapfile:/etc/grid-security/grid-mapfile:ro
 
   xrd3:
-    build:
-      context: .
-      dockerfile: Dockerfile.xrd-scitokens
-    image: local/test-xrootd-scitokens:latest
+    image: mgajekcern/test-xrd-scitokens:latest
     hostname: xrd3
     environment:
       - XRDPORT=1094
@@ -99,10 +96,7 @@ services:
     entrypoint: ["/bin/bash", "/usr/local/bin/docker-entrypoint.sh"]
 
   xrd4:
-    build:
-      context: .
-      dockerfile: Dockerfile.xrd-scitokens
-    image: local/test-xrootd-scitokens:latest
+    image: mgajekcern/test-xrd-scitokens:latest
     hostname: xrd4
     environment:
       - XRDPORT=1094
