@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 # test-storm-tpc.sh — HTTP TPC test using StoRM WebDAV (storm1 → storm2)
-# Uses fts-oidc (port 8447) with Keycloak bearer tokens — no GSI proxy/X.509.
-# FTS-OIDC sends the token as TransferHeaderAuthorization in the COPY request.
-# StoRM validates the token against Keycloak JWKS and applies fine-grained authz.
 set -euo pipefail
 
-FTS="https://localhost:8447"   # fts-oidc — OIDC bearer token auth
+FTS="https://localhost:8447"
 CACERT=./certs/rucio_ca.pem
 
 STORM1=rucio-storage-testbed-storm1-1
@@ -13,8 +10,6 @@ STORM2=rucio-storage-testbed-storm2-1
 FTS_OIDC_CONTAINER=rucio-storage-testbed-fts-oidc-1
 
 # ── Token management ──────────────────────────────────────────────────────────
-# Fetch token from inside fts-oidc container so iss=https://keycloak:8443/realms/rucio
-# matching what StoRM's application.yml registers as the trusted issuer.
 fetch_token() {
   docker exec "$FTS_OIDC_CONTAINER" curl -sk \
     -u "rucio-oidc:rucio-oidc-secret" \
@@ -43,26 +38,9 @@ storm2_curl_anon() {
     --capath /etc/storm/webdav/trustanchors/ "$@"
 }
 
-fts_curl_cert() {
-  # GSI cert auth — used for job submission when we need fine-grained token control.
-  curl -sk --cacert "$CACERT" \
-    --cert ./certs/hostcert.pem --key ./certs/hostkey.pem "$@"
-}
-
 submit_job() {
   local src=$1 dst=$2
   local response
-  # Pass the bearer token for both source and destination.
-  # HTTP source (storm1:8085, anonymousReadEnabled=true) ignores the token.
-  # Storm2 HTTPS destination validates it via Keycloak JWKS.
-  #
-  # unmanaged_tokens=true: tells fts-oidc to use tokens as-is without attempting
-  # token exchange for refresh tokens. Without this, fts-oidc's TokenManager
-  # calls getAccessTokensWithoutRefresh() which tries to exchange the submitted
-  # token for a refresh token via Keycloak — failing with HTTP 400 because our
-  # short-lived test token was issued for direct use, not for exchange.
-  # With unmanaged=1, MySqlAPI.updateTokenPrepFiles() skips the exchange check:
-  #   AND (t_src.refresh_token IS NOT NULL OR t_src.unmanaged = 1)
   response=$(fts_curl -X POST "$FTS/jobs" \
     -H "Content-Type: application/json" \
     -d "{
@@ -144,6 +122,22 @@ for i in $(seq 1 12); do
   echo "  [$i] storm1 not reachable from fts-oidc (HTTP $code)"; sleep 5
 done
 
+# ── Prepare storage area ownership BEFORE any PROPFIND ────────────────────────
+# StoRM's storage area initialization leaves /storage/data owned by root on
+# fresh volumes; the storm process can't write or serve PROPFIND correctly
+# until ownership is fixed. Do this for both storms up front, not just during
+# the seed step — otherwise storm2 returns 400 on the reachability PROPFIND.
+echo ""
+echo "=== Preparing storage area ownership ==="
+for S in "$STORM1" "$STORM2"; do
+  docker exec --user root "$S" sh -c '
+    mkdir -p /storage/data &&
+    chown storm:storm /storage/data &&
+    chmod 755 /storage/data
+  '
+  echo "  ✓ /storage/data on $S owned by storm:storm"
+done
+
 # ── Fetch OIDC token ──────────────────────────────────────────────────────────
 echo ""
 echo "=== Fetching OIDC token ==="
@@ -152,9 +146,17 @@ TOKEN=$(fetch_token)
 
 echo "$TOKEN" | cut -d. -f2 | python3 -c "
 import base64, sys, json
-d = json.loads(base64.urlsafe_b64decode(sys.stdin.read() + '==='))
-print('  iss:   ', d.get('iss'))
-print('  groups:', d.get('wlcg', {}).get('groups', []))
+raw = sys.stdin.read().strip()
+d = json.loads(base64.urlsafe_b64decode(raw + '==='))
+print('  iss:     ', d.get('iss'))
+print('  aud:     ', d.get('aud'))
+print('  scope:   ', d.get('scope'))
+# Read WLCG claims as flat top-level keys — Keycloak's hardcoded-claim-mapper
+# emits literal 'wlcg.ver' / 'wlcg.groups' (escaped dots in mapper config) so
+# they live side-by-side with other top-level claims, not nested under 'wlcg'.
+print('  wlcg.ver:', d.get('wlcg.ver'))
+print('  groups:  ', d.get('wlcg.groups', []))
+print('  azp:     ', d.get('azp'))
 "
 
 # ── Verify fts-oidc REST API ──────────────────────────────────────────────────
@@ -165,13 +167,12 @@ echo "  whoami: HTTP $whoami_code"
 if [[ "$whoami_code" =~ ^2 ]]; then
   echo "  ✓ fts-oidc token auth OK"
 else
-  echo "  ⚠ fts-oidc whoami returned $whoami_code — proceeding anyway (job submission will confirm)"
+  echo "  ⚠ fts-oidc whoami returned $whoami_code — proceeding anyway"
 fi
 
 # ── Verify StoRM storage areas ────────────────────────────────────────────────
 echo ""
 echo "=== Verifying StoRM storage areas ==="
-# Anonymous PROPFIND — anonymousReadEnabled=true
 http_check "storm1 PROPFIND /data/ (anon)" \
   "$(storm_curl_anon -X PROPFIND -H 'Depth: 1' \
      https://storm1:8443/data/ -o /dev/null -w '%{http_code}')"
@@ -179,15 +180,23 @@ http_check "storm2 PROPFIND /data/ (anon, from storm1)" \
   "$(storm_curl_anon -X PROPFIND -H 'Depth: 1' \
      https://storm2:8443/data/ -o /dev/null -w '%{http_code}')"
 
-# Token PROPFIND — poll until CompositeJwtDecoder JWKS cache is warm.
-# StoRM loads JWKS from Keycloak at startup; if Keycloak wasn't ready the
-# cache is empty and returns 500. STORM_WEBDAV_OAUTH_ISSUERS_REFRESH_PERIOD_MINUTES=1
-# triggers a retry every 60s — poll until 207 or give up after 2 minutes.
-echo "  Waiting for storm1 token auth (CompositeJwtDecoder JWKS cache)..."
+# Token PROPFIND — poll until issuer discovery & JWKS cache is warm.
+echo "  Waiting for storm1 token auth..."
 token_code="000"
 for i in $(seq 1 12); do
-  token_code=$(storm_curl -X PROPFIND -H "Depth: 1"     https://storm1:8443/data/ -o /dev/null -w "%{http_code}")
+  token_code=$(storm_curl -X PROPFIND -H "Depth: 1" \
+    https://storm1:8443/data/ -o /dev/null -w "%{http_code}")
   [[ "$token_code" == "207" ]] && { echo "  ✓ storm1 token auth OK (attempt $i)"; break; }
+
+  # Dump the WWW-Authenticate response header on the last attempt for visibility
+  if [[ $i -eq 12 ]]; then
+    echo "  --- Final attempt: full response headers ---"
+    docker exec "$STORM1" curl -sk -I \
+      --capath /etc/storm/webdav/trustanchors/ \
+      -H "Authorization: Bearer $TOKEN" \
+      -X PROPFIND -H "Depth: 1" \
+      https://storm1:8443/data/ | head -20 || true
+  fi
   echo "  [$i] HTTP $token_code — waiting 10s..."
   sleep 10
 done
@@ -197,16 +206,9 @@ done
 echo ""
 echo "=== Seeding storm1 with test file ==="
 docker exec --user root "$STORM1" sh -c "
-  mkdir -p /storage/data &&
-  chown storm:storm /storage/data &&
   echo 'fts-test' > /storage/data/fts-test-file &&
   chown storm:storm /storage/data/fts-test-file &&
   chmod 644 /storage/data/fts-test-file
-"
-# Ensure storm2 storage dir is also writable by storm user (needed for TPC destination)
-docker exec --user root "$STORM2" sh -c "
-  mkdir -p /storage/data &&
-  chown storm:storm /storage/data
 "
 seed_code=$(storm_curl_anon \
   https://storm1:8443/data/fts-test-file -o /dev/null -w '%{http_code}')
@@ -214,30 +216,8 @@ echo "  seed verification: HTTP $seed_code"
 http_check "storm1 seed" "$seed_code"
 
 # ── HTTP TPC: storm1 → storm2 via fts-oidc ───────────────────────────────────
-# fts-oidc fetches a Keycloak token and sends it as TransferHeaderAuthorization
-# in the COPY request to storm2. storm2 uses it to GET from storm1.
-# No GSI proxy, no client certificates — pure OIDC token auth.
 echo ""
 echo "=== Storm TPC: storm1 → storm2 (OIDC token, HTTP source → HTTPS dest) ==="
-echo "  fts-oidc → COPY to storm2 (HTTP source → HTTPS dest, bearer token auth)"
-# StoRM WebDAV's TpcTlsSocketStrategy wraps DefaultClientTlsStrategy with a
-# CANL-backed SSLContext from HttpTransferClientConfiguration. CANL's
-# SSLTrustManager.checkIfTrusted() validates the peer CA against the trust anchors
-# directory and requires a valid namespace — for non-IGTF self-signed CAs this
-# always fails ("No trusted CA certificate was found") regardless of trust anchors,
-# JVM cacerts, conscrypt, or signing_policy content.
-#
-# GH-65 ("Update HTTP-TPC to ignore whether certificates have allowed namespace")
-# is merged and shipped in v1.12.0, but CANL still rejects self-signed CAs at
-# the chain validation level — GH-65 only removes namespace checking, not CA
-# trust. The TPC HTTP client SSLContext is CANL-backed and requires a trusted
-# CA chain regardless. HTTP source bypasses this entirely.
-#
-# Workaround: HTTP source (port 8085, anonymousReadEnabled=true) bypasses CANL
-# peer validation on the pull side. The OIDC token auth is fully demonstrated on
-# the destination write side: fts-oidc attaches the Keycloak bearer token as
-# TransferHeaderAuthorization; storm2 validates it against Keycloak JWKS before
-# accepting the write — the complete OIDC flow is exercised.
 JOB=$(submit_job \
   "http://storm1:8085/data/fts-test-file" \
   "davs://storm2:8443/data/fts-test-file-copy")
@@ -257,18 +237,12 @@ storm_curl_anon -X PROPFIND -H 'Depth: 1' https://storm2:8443/data/ \
   | grep -o '<d:href>[^<]*</d:href>' || true
 
 # ── TPC token auth evidence ───────────────────────────────────────────────────
-# Extract from storm2 container logs the TPC pull and token validation entries.
-# StoRM logs to stdout (captured by Docker) — not to a file.
-# Key log classes:
-#   TransferFilter      — logs TPC pull start/completion with source/dest URLs
-#   WlcgScopeAuthzManager — logs scope-based authz decision (PERMIT/DENY)
-#   CompositeJwtDecoder — logs JWT validation against Keycloak JWKS
 echo ""
 echo "=== storm2 TPC + token auth log evidence ==="
 docker logs "$STORM2" 2>&1 \
   | grep -E "TransferFilter|WlcgScope|CompositeJwt|tpc|third.party|Pull|push|PERMIT|DENY|scope|issuer" \
   | grep -v "^$" \
-  | tail -20 || echo "  (no matching log entries — run with STORM_WEBDAV_LOG_LEVEL=DEBUG for more detail)"
+  | tail -20 || echo "  (no matching log entries)"
 
 echo ""
 echo "All StoRM HTTP TPC tests passed."

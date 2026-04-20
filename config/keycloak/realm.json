@@ -46,25 +46,15 @@
         "openid", "profile", "email", "wlcg", "fts",
         "storage.read", "storage.modify",
         "storage.read:/data", "storage.modify:/data",
-        "storage.read:/", "storage.modify:/"
+        "storage.read:/", "storage.modify:/",
+        "aud:fts-oidc",
+        "aud:xrd3",
+        "aud:xrd4",
+        "aud:storm1",
+        "aud:storm2"
       ],
       "optionalClientScopes": [
-        "offline_access",
-        "wlcg",
-        "fts",
-        "storage.read",
-        "storage.modify"
-      ],
-      "protocolMappers": [
-        {
-          "name": "consolidated-audience",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-audience-mapper",
-          "config": {
-            "included.custom.audience": "fts-oidc,STORM1,STORM2,storm1,storm2,rucio-oidc,https://xrd3:1094,https://xrd4:1094",
-            "access.token.claim": "true"
-          }
-        }
+        "offline_access"
       ],
       "attributes": {
         "oidc.ciba.grant.enabled": "false",
@@ -116,14 +106,32 @@
     {
       "name": "wlcg",
       "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
       "protocolMappers": [
         {
           "name": "wlcg-version",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-hardcoded-claim-mapper",
           "config": {
-            "claim.name": "wlcg.ver",
+            "claim.name": "wlcg\\.ver",
             "claim.value": "1.0",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        },
+        {
+          "name": "nbf-patch",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "config": {
+            "claim.name": "nbf",
+            "claim.value": "1700000000",
+            "jsonType.label": "long",
             "access.token.claim": "true"
           }
         },
@@ -132,9 +140,11 @@
           "protocol": "openid-connect",
           "protocolMapper": "oidc-group-membership-mapper",
           "config": {
-            "claim.name": "wlcg.groups",
+            "claim.name": "wlcg\\.groups",
             "full.path": "true",
-            "access.token.claim": "true"
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false"
           }
         }
       ]
@@ -145,7 +155,113 @@
     { "name": "storage.read:/data", "protocol": "openid-connect" },
     { "name": "storage.modify:/data", "protocol": "openid-connect" },
     { "name": "storage.read:/", "protocol": "openid-connect" },
-    { "name": "storage.modify:/", "protocol": "openid-connect" }
+    { "name": "storage.modify:/", "protocol": "openid-connect" },
+
+    {
+      "name": "aud:fts-oidc",
+      "description": "Adds fts-oidc to the token's aud claim. Request alongside 'fts' scope to get an FTS-submission token.",
+      "protocol": "openid-connect",
+      "attributes": {
+        "display.on.consent.screen": "false",
+        "include.in.token.scope": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "aud-fts-oidc",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "fts-oidc",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "name": "aud:storm1",
+      "description": "Adds https://storm1:8443 to the token's aud claim for StoRM WebDAV validation on storm1.",
+      "protocol": "openid-connect",
+      "attributes": {
+        "display.on.consent.screen": "false",
+        "include.in.token.scope": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "aud-storm1",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "https://storm1:8443",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "name": "aud:storm2",
+      "description": "Adds https://storm2:8443 to the token's aud claim for StoRM WebDAV validation on storm2.",
+      "protocol": "openid-connect",
+      "attributes": {
+        "display.on.consent.screen": "false",
+        "include.in.token.scope": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "aud-storm2",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "https://storm2:8443",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "name": "aud:xrd3",
+      "description": "Adds https://xrd3:1094 to the token's aud claim for SciTokens validation on xrd3.",
+      "protocol": "openid-connect",
+      "attributes": {
+        "display.on.consent.screen": "false",
+        "include.in.token.scope": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "aud-xrd3",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "https://xrd3:1094",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "name": "aud:xrd4",
+      "description": "Adds https://xrd4:1094 to the token's aud claim for SciTokens validation on xrd4.",
+      "protocol": "openid-connect",
+      "attributes": {
+        "display.on.consent.screen": "false",
+        "include.in.token.scope": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "aud-xrd4",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "https://xrd4:1094",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
   ],
   "sslRequired": "none"
 }

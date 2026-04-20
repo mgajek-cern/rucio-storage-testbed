@@ -282,13 +282,6 @@ VALUES
   ('keycloak-rucio-slash', 'https://keycloak:8443/realms/rucio/', 'rucio-oidc', 'rucio-oidc-secret');
 " 2>/dev/null && echo "  token provider registered (both slash variants)"
 
-# t_token.audience is NOT NULL in the DB schema but our Keycloak tokens have no aud claim.
-# Make it nullable so job submissions succeed without an audience claim.
-echo "  Making t_token.audience nullable (Keycloak tokens have no aud claim)..."
-docker exec rucio-storage-testbed-ftsdb-oidc-1 mysql -ufts -pfts fts -e "
-ALTER TABLE t_token MODIFY COLUMN audience varchar(1024) NULL;
-" 2>/dev/null && echo "  t_token.audience is now nullable"
-
 # Restart fts-oidc so it picks up the new provider from DB
 # Note: middleware.py trailing-slash fix is applied via volume mount in docker-compose.yml
 echo "  Restarting fts-oidc to load provider..."

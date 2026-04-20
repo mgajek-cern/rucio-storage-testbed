@@ -5,18 +5,19 @@ storm:
         actions:
           - all
         effect: permit
-        description: Grant full access to any authenticated user (testbed)
+        description: "Grant full access to rucio users"
         principals:
-          - type: any-authenticated-user
+          - type: JWT_GROUP
+            params:
+              iss: "https://keycloak:8443/realms/rucio"
+              group: "/rucio/users"
       - sa: data
         actions:
-          - list
-          - read
+          - all
         effect: permit
-        description: Grant read access to anyone
+        description: "Grant full access to atlas users"
         principals:
-          - type: anyone
-  tpc:
-    use-conscrypt: false
-    max-connections: 50
-    verify-checksum: false
+          - type: JWT_GROUP
+            params:
+              iss: "https://keycloak:8443/realms/rucio"
+              group: "/atlas/users"
