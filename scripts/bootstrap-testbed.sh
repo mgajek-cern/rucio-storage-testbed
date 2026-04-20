@@ -2,331 +2,217 @@
 
 set -euo pipefail
 
-RUCIO=rucio-storage-testbed-rucio-1
-RUCIO_OIDC=rucio-storage-testbed-rucio-oidc-1
-
-# ── Wait for rucio-oidc and Keycloak to be ready ─────────────────────────────
-echo "=== Waiting for rucio-oidc ==="
-for i in $(seq 1 30); do
-  code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8448/ping 2>/dev/null) || true
-  [[ "$code" == "200" ]] && { echo "  rucio-oidc ready"; break; }
-  echo "  [$i] rucio-oidc HTTP $code — waiting..."
-  sleep 5
-done
-
-echo "=== Waiting for Keycloak ==="
-for i in $(seq 1 30); do
-  code=$(docker exec "$RUCIO_OIDC" curl -s -o /dev/null -w '%{http_code}' \
-    https://keycloak:8443/realms/rucio/.well-known/openid-configuration 2>/dev/null) || true
-  [[ "$code" == "200" ]] && { echo "  Keycloak ready"; break; }
-  echo "  [$i] Keycloak HTTP $code — waiting..."
-  sleep 5
-done
-
-# ── Restart StoRM after Keycloak is ready ─────────────────────────────────────
-# StoRM fetches the JWKS from Keycloak at startup. If Keycloak wasn't ready,
-# the issuer cache is empty and all token requests return 500.
-# Restarting storm1/storm2 now (Keycloak confirmed ready above) fixes this.
-echo "=== Restarting StoRM WebDAV (Keycloak now ready) ==="
-docker compose restart storm1 storm2
-echo "  Waiting for StoRM to be healthy (up to 3 minutes)..."
-storm_healthy=false
-for i in $(seq 1 18); do
-  s1=$(docker inspect --format='{{.State.Health.Status}}' rucio-storage-testbed-storm1-1 2>/dev/null) || s1="unknown"
-  s2=$(docker inspect --format='{{.State.Health.Status}}' rucio-storage-testbed-storm2-1 2>/dev/null) || s2="unknown"
-  if [[ "$s1" == "healthy" && "$s2" == "healthy" ]]; then
-    echo "  ✓ storm1 and storm2 healthy"
-    storm_healthy=true
-    break
-  fi
-  echo "  [$i] storm1=$s1 storm2=$s2 — waiting..."
-  sleep 10
-done
-[[ "$storm_healthy" == "true" ]] || echo "  ⚠ StoRM did not reach healthy — continuing (test-storm-tpc.sh will wait)"
-
+# ── Global Config ───────────────────────────────────────────────────────────
+RUCIO="rucio-storage-testbed-rucio-1"
+RUCIO_OIDC="rucio-storage-testbed-rucio-oidc-1"
 FTS="https://fts:8446"
 FTS_OIDC="https://fts-oidc:8446"
 
-# Admin helpers — each targeting a specific Rucio instance
 ra()      { docker exec "$RUCIO"      rucio-admin -S userpass -u ddmlab --password secret "$@"; }
 ra_oidc() { docker exec "$RUCIO_OIDC" rucio-admin -S userpass -u ddmlab --password secret "$@"; }
 
-# ── Accounts & identities ─────────────────────────────────────────────────────
-echo "=== Accounts ==="
+# ── Infrastructure Readiness ────────────────────────────────────────────────
 
-ra account add --type USER --email jdoe@rucio jdoe || true
-ra identity add --type USERPASS --id jdoe --email jdoe@rucio --account jdoe --password secret || true
+wait_for_infrastructure() {
+    echo "=== Waiting for Rucio and Keycloak ==="
+    for i in $(seq 1 30); do
+        code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8448/ping 2>/dev/null) || true
+        [[ "$code" == "200" ]] && { echo "  ✓ rucio-oidc ready"; break; }
+        echo "  [$i] rucio-oidc HTTP $code — waiting..."; sleep 5
+    done
 
-ra_oidc account add --type SERVICE --email ddmlab@rucio ddmlab || true
-ra_oidc account add --type USER --email jdoe2@rucio jdoe2 || true
+    for i in $(seq 1 30); do
+        code=$(docker exec "$RUCIO_OIDC" curl -s -o /dev/null -w '%{http_code}' \
+            https://keycloak:8443/realms/rucio/.well-known/openid-configuration 2>/dev/null) || true
+        [[ "$code" == "200" ]] && { echo "  ✓ Keycloak ready"; break; }
+        echo "  [$i] Keycloak HTTP $code — waiting..."; sleep 5
+    done
+}
 
-# Give Keycloak a moment to finish importing the realm before token requests
-echo "  Verifying Keycloak realm token endpoint..."
-# Encode rucio-oidc:rucio-oidc-secret to base64 for Basic Auth
-AUTH_HEADER=$(echo -n "rucio-oidc:rucio-oidc-secret" | base64)
+restart_storm_nodes() {
+    local label=$1
+    echo "=== Restarting StoRM ($label) ==="
+    docker compose restart storm1 storm2
+    echo "  Waiting for StoRM health checks..."
+    for i in $(seq 1 20); do
+        s1=$(docker inspect --format='{{.State.Health.Status}}' rucio-storage-testbed-storm1-1 2>/dev/null || echo "unknown")
+        s2=$(docker inspect --format='{{.State.Health.Status}}' rucio-storage-testbed-storm2-1 2>/dev/null || echo "unknown")
+        if [[ "$s1" == "healthy" && "$s2" == "healthy" ]]; then
+            echo "  ✓ All StoRM nodes healthy"
+            return 0
+        fi
+        echo "  [$i] storm1=$s1 storm2=$s2 — waiting..."; sleep 10
+    done
+}
 
-for i in $(seq 1 12); do
-  code=$(docker exec "$RUCIO_OIDC" curl -s -o /dev/null -w '%{http_code}' \
-    -X POST https://keycloak:8443/realms/rucio/protocol/openid-connect/token \
-    -H "Authorization: Basic $AUTH_HEADER" \
-    -H "Content-Type: application/x-www-form-urlencoded" \
-    -d "grant_type=password&username=jdoe2&password=secret" \
-    2>/dev/null) || true
+# ── Identity & Account Setup ───────────────────────────────────────────────
 
-  [[ "$code" == "200" ]] && { echo "  Keycloak token endpoint ready"; break; }
-  echo "  [$i] token endpoint HTTP $code — waiting..."
-  sleep 5
-done
+setup_accounts_and_identities() {
+    echo "=== Configuring Rucio Accounts ==="
+    ra account add --type SERVICE --email ddmlab@rucio ddmlab || true
+    ra_oidc account add --type SERVICE --email ddmlab@rucio ddmlab || true
 
-echo "  Registering OIDC identity for jdoe2..."
-docker exec "$RUCIO_OIDC" python3 -c "
-import urllib.request, urllib.parse, json
+    ra account add --type USER --email jdoe@rucio jdoe || true
+    ra identity add --type USERPASS --id jdoe --email jdoe@rucio --account jdoe --password secret || true
+    ra_oidc account add --type USER --email jdoe2@rucio jdoe2 || true
 
-import base64 as _b64
-data = urllib.parse.urlencode({
-    'grant_type': 'password',
-    'username': 'jdoe2',
-    'password': 'secret',
-}).encode()
+    echo "  Verifying Keycloak token endpoint..."
+    AUTH=$(echo -n "rucio-oidc:rucio-oidc-secret" | base64)
+    for i in $(seq 1 12); do
+        code=$(docker exec "$RUCIO_OIDC" curl -s -o /dev/null -w '%{http_code}' \
+            -X POST https://keycloak:8443/realms/rucio/protocol/openid-connect/token \
+            -H "Authorization: Basic $AUTH" -d "grant_type=password&username=jdoe2&password=secret" 2>/dev/null) || true
+        [[ "$code" == "200" ]] && break
+        sleep 5
+    done
 
-# Confidential client: credentials via Basic Auth header
-_auth = _b64.b64encode(b'rucio-oidc:rucio-oidc-secret').decode()
-req = urllib.request.Request(
-    'https://keycloak:8443/realms/rucio/protocol/openid-connect/token',
-    data=data,
-    headers={
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': f'Basic {_auth}',
-    }
-)
-resp = json.loads(urllib.request.urlopen(req).read())
-
-import base64, json as _json
-payload = resp['access_token'].split('.')[1]
-payload += '=' * (4 - len(payload) % 4)
-claims = _json.loads(base64.urlsafe_b64decode(payload))
-identity = claims['iss'] + '#' + claims['sub']
-
+    echo "  Registering OIDC identity for jdoe2..."
+    docker exec "$RUCIO_OIDC" python3 -c "
+import urllib.request, urllib.parse, json, base64
 from rucio.core.identity import add_identity, add_account_identity
 from rucio.common.types import InternalAccount
+from rucio.common import exception
+
 try:
-    add_identity(identity, 'OIDC', 'jdoe2@rucio')
-except Exception: pass
-add_account_identity(identity, 'OIDC', InternalAccount('jdoe2'), 'jdoe2@rucio')
-print('  OIDC identity registered for jdoe2:', identity)
-" || echo "  Warning: could not register OIDC identity"
+    data = urllib.parse.urlencode({'grant_type':'password','username':'jdoe2','password':'secret'}).encode()
+    _auth = base64.b64encode(b'rucio-oidc:rucio-oidc-secret').decode()
+    req = urllib.request.Request('https://keycloak:8443/realms/rucio/protocol/openid-connect/token',
+        data=data, headers={'Authorization': f'Basic {_auth}'})
+    resp = json.loads(urllib.request.urlopen(req).read())
+    claims = json.loads(base64.urlsafe_b64decode(resp['access_token'].split('.')[1] + '=='))
+    identity = claims['iss'] + '#' + claims['sub']
 
-# ── Scopes ────────────────────────────────────────────────────────────────────
-echo "=== Scopes ==="
-ra scope add --account root --scope test || true
-ra scope add --account jdoe --scope user.jdoe || true
-ra_oidc scope add --account jdoe2 --scope user.jdoe2 || true
-ra_oidc scope add --account root --scope test || true
+    try: add_identity(identity, 'OIDC', 'jdoe2@rucio')
+    except exception.Duplicate: pass
 
-# ── XRootD RSEs ───────────────────────────────────────────────────────────────
-echo "=== XRootD RSEs ==="
-for rse in XRD1 XRD2; do
-  ra rse add "$rse" || true
-  ra rse set-attribute --rse "$rse" --key fts --value "$FTS"
-done
+    try: add_account_identity(identity, 'OIDC', InternalAccount('jdoe2'), 'jdoe2@rucio')
+    except exception.Duplicate: pass
+    print(f'  ✓ Identity registered: {identity}')
+except Exception as e:
+    print(f'  ⚠ Registration failed: {e}')
+"
+}
 
-ra rse add-protocol XRD1 \
-  --scheme root --hostname xrd1 --port 1094 --prefix //rucio \
-  --impl rucio.rse.protocols.gfal.Default \
-  --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
+# ── RSE Configuration ───────────────────────────────────────────────────────
 
-ra rse add-protocol XRD2 \
-  --scheme root --hostname xrd2 --port 1094 --prefix //rucio \
-  --impl rucio.rse.protocols.gfal.Default \
-  --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
+configure_rses() {
+    local cmd=$1
+    local fts_endpoint=$2
+    local label=$3
+    echo "=== Configuring RSEs on $label ==="
 
-ra rse add-distance XRD1 XRD2 --distance 1
-ra rse add-distance XRD2 XRD1 --distance 1
+    for rse in XRD1 XRD2; do
+        local host=$(echo "$rse" | tr '[:upper:]' '[:lower:]')
+        $cmd rse add "$rse" || true
+        $cmd rse set-attribute --rse "$rse" --key fts --value "$fts_endpoint"
+        $cmd rse add-protocol "$rse" --scheme root --hostname "$host" --port 1094 --prefix //rucio \
+            --impl rucio.rse.protocols.gfal.Default \
+            --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
+    done
 
-# ── WebDAV RSEs (Apache mod_dav — GSI proxy auth, classic FTS) ───────────────
-echo "=== WebDAV RSEs ==="
-for rse in WEBDAV1 WEBDAV2; do
-  ra rse add "$rse" || true
-  ra rse set-attribute --rse "$rse" --key fts --value "$FTS"
-done
+    for rse in WEBDAV1 WEBDAV2; do
+        local host=$(echo "$rse" | tr '[:upper:]' '[:lower:]')
+        $cmd rse add "$rse" || true
+        $cmd rse set-attribute --rse "$rse" --key fts --value "$fts_endpoint"
+        $cmd rse add-protocol "$rse" --scheme davs --hostname "$host" --port 443 --prefix /webdav \
+            --impl rucio.rse.protocols.gfal.Default \
+            --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
+    done
 
-ra rse add-protocol WEBDAV1 \
-  --scheme davs --hostname webdav1 --port 443 --prefix /webdav \
-  --impl rucio.rse.protocols.gfal.Default \
-  --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
+    for rse in STORM1 STORM2; do
+        local host=$(echo "$rse" | tr '[:upper:]' '[:lower:]')
+        $cmd rse add "$rse" || true
+        $cmd rse set-attribute --rse "$rse" --key fts --value "$FTS_OIDC"
+        $cmd rse set-attribute --rse "$rse" --key oidc_support --value True
+        $cmd rse set-attribute --rse "$rse" --key auth_type --value OIDC
+        $cmd rse set-attribute --rse "$rse" --key audience --value "$host"
 
-ra rse add-protocol WEBDAV2 \
-  --scheme davs --hostname webdav2 --port 443 --prefix /webdav \
-  --impl rucio.rse.protocols.gfal.Default \
-  --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
+        # Disable checksum verification for OIDC StoRM RSEs to avoid 00000000 != real_checksum errors
+        if [[ "$label" == "Rucio-OIDC" ]]; then
+            $cmd rse set-attribute --rse "$rse" --key verify_checksum --value False
+        fi
 
-ra rse add-distance WEBDAV1 WEBDAV2 --distance 1
-ra rse add-distance WEBDAV2 WEBDAV1 --distance 1
+        local scheme="davs"; local port="8443"
+        local domains='{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
 
-# ── StoRM WebDAV RSEs (genuine HTTP TPC + OIDC token support) ────────────────
-# Storage area "data" is served at /data/ on port 8443.
-# oidc_support=True tells Rucio to forward the OIDC bearer token to FTS
-# so FTS can authenticate to StoRM WebDAV without a GSI proxy.
-echo "=== StoRM WebDAV RSEs ==="
-for rse in STORM1 STORM2; do
-  ra rse add "$rse" || true
-  ra rse set-attribute --rse "$rse" --key fts --value "$FTS_OIDC"
-  ra rse set-attribute --rse "$rse" --key oidc_support --value True
+        if [[ "$label" == "Rucio-OIDC" && "$rse" == "STORM1" ]]; then
+            scheme="http"; port="8085"
+            domains='{"wan":{"read":0,"write":0,"delete":0,"third_party_copy_read":1,"third_party_copy_write":0},"lan":{"read":0,"write":0,"delete":0}}'
+        fi
 
-  ra rse set-attribute --rse "$rse" --key auth_type --value OIDC
+        $cmd rse add-protocol "$rse" --scheme "$scheme" --hostname "$host" --port "$port" --prefix /data \
+            --impl rucio.rse.protocols.gfal.Default --domain-json "$domains"
+    done
 
-  if [ "$rse" == "STORM1" ]; then
-    ra rse set-attribute --rse "$rse" --key audience --value "storm1"
-  else
-    ra rse set-attribute --rse "$rse" --key audience --value "storm2"
-  fi
-done
+    $cmd rse add-distance XRD1 XRD2 --distance 1 || true
+    $cmd rse add-distance XRD2 XRD1 --distance 1 || true
+    $cmd rse add-distance WEBDAV1 WEBDAV2 --distance 1 || true
+    $cmd rse add-distance WEBDAV2 WEBDAV1 --distance 1 || true
+    $cmd rse add-distance STORM1 STORM2 --distance 1 || true
+    $cmd rse add-distance STORM2 STORM1 --distance 1 || true
+}
 
-ra rse add-protocol STORM1 \
-  --scheme davs --hostname storm1 --port 8443 --prefix /data \
-  --impl rucio.rse.protocols.gfal.Default \
-  --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
+# ── FTS & Delegation ───────────────────────────────────────────────────────
 
-ra rse add-protocol STORM2 \
-  --scheme davs --hostname storm2 --port 8443 --prefix /data \
-  --impl rucio.rse.protocols.gfal.Default \
-  --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
+setup_fts_oidc_provider() {
+    echo "=== Registering Keycloak in FTS Database ==="
+    docker exec rucio-storage-testbed-ftsdb-oidc-1 mysql -ufts -pfts fts -e "
+    INSERT IGNORE INTO t_token_provider (name, issuer, client_id, client_secret)
+    VALUES
+      ('keycloak-rucio',       'https://keycloak:8443/realms/rucio',  'rucio-oidc', 'rucio-oidc-secret'),
+      ('keycloak-rucio-slash', 'https://keycloak:8443/realms/rucio/', 'rucio-oidc', 'rucio-oidc-secret');"
 
-ra rse add-distance STORM1 STORM2 --distance 1
-ra rse add-distance STORM2 STORM1 --distance 1
+    echo "  Restarting fts-oidc..."
+    docker compose restart fts-oidc
+    for i in $(seq 1 30); do
+        code=$(docker exec rucio-storage-testbed-fts-oidc-1 curl -sk -o /dev/null -w '%{http_code}' https://localhost:8446/whoami 2>/dev/null) || code=0
+        [[ "$code" == "200" || "$code" == "403" ]] && { echo "  ✓ fts-oidc ready"; break; }
+        sleep 5
+    done
+}
 
-# ── RSEs on rucio-oidc ────────────────────────────────────────────────────────
-echo "=== RSEs on rucio-oidc ==="
-for rse in XRD1 XRD2; do
-  ra_oidc rse add "$rse" || true
-  ra_oidc rse set-attribute --rse "$rse" --key fts --value "$FTS"
-done
-
-ra_oidc rse add-protocol XRD1 \
-  --scheme root --hostname xrd1 --port 1094 --prefix //rucio \
-  --impl rucio.rse.protocols.gfal.Default \
-  --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
-
-ra_oidc rse add-protocol XRD2 \
-  --scheme root --hostname xrd2 --port 1094 --prefix //rucio \
-  --impl rucio.rse.protocols.gfal.Default \
-  --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
-
-ra_oidc rse add-distance XRD1 XRD2 --distance 1
-ra_oidc rse add-distance XRD2 XRD1 --distance 1
-
-for rse in WEBDAV1 WEBDAV2; do
-  ra_oidc rse add "$rse" || true
-  ra_oidc rse set-attribute --rse "$rse" --key fts --value "$FTS"
-done
-
-ra_oidc rse add-protocol WEBDAV1 \
-  --scheme davs --hostname webdav1 --port 443 --prefix /webdav \
-  --impl rucio.rse.protocols.gfal.Default \
-  --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
-
-ra_oidc rse add-protocol WEBDAV2 \
-  --scheme davs --hostname webdav2 --port 443 --prefix /webdav \
-  --impl rucio.rse.protocols.gfal.Default \
-  --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
-
-ra_oidc rse add-distance WEBDAV1 WEBDAV2 --distance 1
-ra_oidc rse add-distance WEBDAV2 WEBDAV1 --distance 1
-
-# StoRM RSEs on rucio-oidc — used by jdoe2 with OIDC token auth
-for rse in STORM1 STORM2; do
-  ra_oidc rse add "$rse" || true
-  ra_oidc rse set-attribute --rse "$rse" --key fts --value "$FTS_OIDC"
-  ra_oidc rse set-attribute --rse "$rse" --key oidc_support --value True
-  ra_oidc rse set-attribute --rse "$rse" --key verify_checksum --value False
-
-  ra_oidc rse set-attribute --rse "$rse" --key auth_type --value OIDC
-
-  if [ "$rse" == "STORM1" ]; then
-    ra_oidc rse set-attribute --rse "$rse" --key audience --value "storm1"
-  else
-    ra_oidc rse set-attribute --rse "$rse" --key audience --value "storm2"
-  fi
-done
-
-ra_oidc rse add-protocol STORM1 \
-  --scheme http --hostname storm1 --port 8085 --prefix /data \
-  --impl rucio.rse.protocols.gfal.Default \
-  --domain-json '{"wan":{"read":0,"write":0,"delete":0,"third_party_copy_read":1,"third_party_copy_write":0},"lan":{"read":0,"write":0,"delete":0}}'
-
-ra_oidc rse add-protocol STORM2 \
-  --scheme davs --hostname storm2 --port 8443 --prefix /data \
-  --impl rucio.rse.protocols.gfal.Default \
-  --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
-
-ra_oidc rse add-distance STORM1 STORM2 --distance 1
-ra_oidc rse add-distance STORM2 STORM1 --distance 1
-
-# ── Account limits ────────────────────────────────────────────────────────────
-echo "=== Account limits ==="
-for rse in XRD1 XRD2 WEBDAV1 WEBDAV2 STORM1 STORM2; do
-  ra account set-limits root "$rse" infinity
-  ra account set-limits jdoe "$rse" infinity
-  ra_oidc account set-limits jdoe2 "$rse" infinity
-  ra_oidc account set-limits root "$rse" infinity
-done
-
-# ── Register Keycloak as FTS-OIDC token provider ─────────────────────────────
-# The Flask-based fts3rest requires token providers in t_token_provider table.
-# Without this, oidc_manager.token_issuer_supported() returns false for all tokens.
-echo "=== Registering Keycloak as fts-oidc token provider ==="
-docker exec rucio-storage-testbed-ftsdb-oidc-1 mysql -ufts -pfts fts -e "
-INSERT IGNORE INTO t_token_provider (name, issuer, client_id, client_secret)
-VALUES
-  ('keycloak-rucio',       'https://keycloak:8443/realms/rucio',  'rucio-oidc', 'rucio-oidc-secret'),
-  ('keycloak-rucio-slash', 'https://keycloak:8443/realms/rucio/', 'rucio-oidc', 'rucio-oidc-secret');
-" 2>/dev/null && echo "  token provider registered (both slash variants)"
-
-# Restart fts-oidc so it picks up the new provider from DB
-# Note: middleware.py trailing-slash fix is applied via volume mount in docker-compose.yml
-echo "  Restarting fts-oidc to load provider..."
-docker compose restart fts-oidc
-echo "  Waiting for fts-oidc to be healthy after restart..."
-for i in $(seq 1 30); do
-  code=$(docker exec rucio-storage-testbed-fts-oidc-1     curl -sk -o /dev/null -w '%{http_code}' https://localhost:8446/whoami 2>/dev/null) || code=0
-  [[ "$code" == "200" || "$code" == "403" ]] && { echo "  fts-oidc up (HTTP $code)"; break; }
-  echo "  [$i] fts-oidc HTTP $code — waiting..."
-  sleep 10
-done
-
-# Restart storm so CompositeJwtDecoder loads Keycloak JWKS
-echo "=== Restarting StoRM to load Keycloak JWKS ==="
-docker compose restart storm1 storm2
-# Wait for storm to be running (arm64 QEMU startup is slow ~3min)
-# test-storm-tpc.sh also polls, but giving it a head start avoids timeout
-echo "  Waiting for StoRM containers to be running after JWKS restart..."
-for c in rucio-storage-testbed-storm1-1 rucio-storage-testbed-storm2-1; do
-  for i in $(seq 1 36); do
-    state=$(docker inspect --format='{{.State.Status}}' "$c" 2>/dev/null) || state="unknown"
-    [[ "$state" == "running" ]] && { echo "  $c running"; break; }
-    echo "    [$i] $c state=$state"; sleep 5
-  done
-done
-
-# ── Delegate GSI proxy to FTS (required for XRootD TPC via rucio conveyor) ────
-# The conveyor-submitter authenticates to FTS using the hostcert. FTS needs a
-# delegated proxy to perform XRootD TPC. Delegate from both FTS instances.
-echo "=== Delegating GSI proxy to FTS instances ==="
-for fts_url in "https://fts:8446" "https://fts-oidc:8446"; do
-  docker exec rucio-storage-testbed-fts-1 python3 -c "
+delegate_gsi_proxies() {
+    echo "=== Delegating GSI proxies to FTS ==="
+    for url in "$FTS" "$FTS_OIDC"; do
+        docker exec rucio-storage-testbed-fts-1 python3 -c "
 import datetime, fts3.rest.client.easy as fts3
-ctx = fts3.Context('$fts_url',
-    ucert='/etc/grid-security/hostcert.pem',
-    ukey='/etc/grid-security/hostkey.pem',
-    verify=False)
+ctx = fts3.Context('$url', ucert='/etc/grid-security/hostcert.pem', ukey='/etc/grid-security/hostkey.pem', verify=False)
 fts3.delegate(ctx, lifetime=datetime.timedelta(hours=48), force=True)
-print('  Delegated to $fts_url — DN:', fts3.whoami(ctx)['user_dn'])
-" 2>/dev/null || echo "  Warning: delegation to $fts_url failed (non-fatal)"
-done
+" 2>/dev/null || echo "  ⚠ Delegation to $url failed (non-fatal)"
+    done
+}
 
-echo ""
-echo "=== Bootstrap complete ==="
-echo "--- RSEs on rucio (userpass) ---"
-ra rse list
-echo "--- RSEs on rucio-oidc ---"
-ra_oidc rse list
+# ── Main Orchestration ─────────────────────────────────────────────────────
+
+main() {
+    wait_for_infrastructure
+    restart_storm_nodes "Initial Startup"
+
+    setup_accounts_and_identities
+
+    configure_rses "ra" "$FTS" "Rucio-Classic"
+    configure_rses "ra_oidc" "$FTS" "Rucio-OIDC"
+
+    echo "=== Configuring Scopes and Quotas ==="
+
+    ra scope add --account root --scope test || true
+    ra_oidc scope add --account root --scope test || true
+
+    for rse in XRD1 XRD2 WEBDAV1 WEBDAV2 STORM1 STORM2; do
+        ra account set-limits root "$rse" infinity || true
+        ra account set-limits jdoe "$rse" infinity || true
+        ra account set-limits ddmlab "$rse" infinity || true
+
+        ra_oidc account set-limits root "$rse" infinity || true
+        ra_oidc account set-limits jdoe2 "$rse" infinity || true
+        ra_oidc account set-limits ddmlab "$rse" infinity || true
+    done
+
+    setup_fts_oidc_provider
+    restart_storm_nodes "Final JWKS Sync"
+    delegate_gsi_proxies
+
+    echo -e "\n=== Bootstrap Complete ==="
+}
+
+main
