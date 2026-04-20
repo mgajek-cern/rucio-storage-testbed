@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
-# test-fts-with-s3.sh — quick smoke tests for MinIO endpoints
-# Run from the repo root after `docker-compose up -d`
+# test-fts-with-s3.sh — tests for MinIO endpoints
 set -euo pipefail
 
+# ── Global Config ───────────────────────────────────────────────────────────
 FTS="https://localhost:8446"
 CERT=./certs/hostcert.pem
 KEY=./certs/hostkey.pem
 CACERT=./certs/rucio_ca.pem
 
+# ── Helpers ─────────────────────────────────────────────────────────────────
+
 fts_curl() {
   curl -sk --cert "$CERT" --key "$KEY" --cacert "$CACERT" "$@"
+}
+
+http_check() {
+  local desc=$1 code=$2
+  echo "  $desc: HTTP $code"
+  [[ "$code" =~ ^2 ]] || { echo "✗ $desc failed (HTTP $code)"; exit 1; }
 }
 
 submit_job() {
@@ -36,13 +44,49 @@ poll_job() {
   echo "✗ timed out"; return 1
 }
 
-http_check() {
-  local desc=$1 code=$2
-  echo "  $desc: HTTP $code"
-  [[ "$code" =~ ^2 ]] || { echo "✗ $desc failed (HTTP $code)"; exit 1; }
+# ── Logic Blocks ────────────────────────────────────────────────────────────
+
+wait_for_fts() {
+  echo "=== Waiting for FTS ==="
+  for i in $(seq 1 20); do
+    code=$(fts_curl -o /dev/null -w '%{http_code}' "$FTS/whoami" 2>/dev/null) || true
+    [[ "$code" == "200" ]] && { echo "  FTS ready"; return 0; }
+    echo "  [$i] HTTP $code — waiting..."
+    sleep 3
+  done
+  return 1
 }
 
-# ── Delegate proxy ───────────────────────────────────────────────────────────
+register_s3_creds() {
+  echo "=== Registering S3 credentials ==="
+  local VO
+  VO=$(fts_curl "$FTS/whoami" | python3 -c "import sys,json; print(json.load(sys.stdin)['vos'][0])")
+  echo "  VO: $VO"
+
+  for storage in S3:minio1 S3:minio2; do
+    # Clean up stale
+    fts_curl -X DELETE "$FTS/config/cloud_storage/$storage" -o /dev/null 2>&1 || true
+
+    # Register storage
+    local reg_code
+    reg_code=$(fts_curl -o /dev/null -w '%{http_code}' \
+      -X POST "$FTS/config/cloud_storage" \
+      -H 'Content-Type: application/json' \
+      -d "{\"storage_name\":\"$storage\"}") || true
+    echo "  register $storage: HTTP $reg_code"
+
+    # Grant access
+    cat > /tmp/s3creds.json << ENDJSON
+{"vo_name":"$VO","access_token":"minioadmin","access_token_secret":"minioadmin"}
+ENDJSON
+    http_check "grant VO access to $storage" \
+      "$(fts_curl -o /dev/null -w '%{http_code}' \
+        -X POST "$FTS/config/cloud_storage/$storage" \
+        -H 'Content-Type: application/json' \
+        -d @/tmp/s3creds.json)"
+  done
+}
+
 # FTS requires a delegated proxy before accepting job submissions (419 otherwise).
 # Steps: get delegation ID → fetch CSR → sign with user cert → PUT signed proxy.
 delegate() {
@@ -81,84 +125,48 @@ delegate() {
       --data-binary @/tmp/proxy_chain.pem)"
 }
 
-# ── S3 credentials ───────────────────────────────────────────────────────────
-# Storage names must be S3:<hostname> so FTS matches against s3://minio1:... / s3://minio2:...
-# Actual SigV4 signing credentials come from config/gfal2_http_plugin.conf
-# (ALTERNATE=true + ACCESS_KEY/SECRET_KEY). The DB registration below is kept
-# for consistency with production FTS setups.
-echo "=== Waiting for FTS ==="
-for i in $(seq 1 20); do
-  code=$(fts_curl -o /dev/null -w '%{http_code}' "$FTS/whoami" 2>/dev/null) || true
-  [[ "$code" == "200" ]] && { echo "  FTS ready"; break; }
-  echo "  [$i] HTTP $code — waiting..."
-  sleep 3
-done
+run_transfers() {
+  echo -e "\n=== S3: xrd1 → MinIO1 ==="
+  local JOB
+  JOB=$(submit_job "root://xrd1//rucio/fts-test-file" "s3://minio1:9000/fts-test/fts-test-file-from-xrd1")
+  poll_job "$JOB"
 
-echo "=== Registering S3 credentials ==="
-VO=$(fts_curl "$FTS/whoami" | python3 -c "import sys,json; print(json.load(sys.stdin)['vos'][0])")
-echo "  VO: $VO"
+  echo -e "\n=== S3: MinIO1 → xrd2 ==="
+  JOB=$(submit_job "s3://minio1:9000/fts-test/fts-test-file" "root://xrd2//rucio/fts-test-file-from-s3")
+  poll_job "$JOB"
 
-# Clean up any stale registrations from previous runs, then re-register.
-for storage in S3:minio S3:minio1 S3:minio2; do
-  fts_curl -X DELETE "$FTS/config/cloud_storage/$storage" -o /dev/null 2>&1 || true
-done
+  echo -e "\n=== S3: MinIO1 → MinIO2 ==="
+  JOB=$(submit_job "s3://minio1:9000/fts-test/fts-test-file" "s3://minio2:9000/fts-test/fts-test-file-copy")
+  poll_job "$JOB"
+}
 
-for storage in S3:minio1 S3:minio2; do
-  reg_code=$(fts_curl -o /dev/null -w '%{http_code}' \
-    -X POST "$FTS/config/cloud_storage" \
-    -H 'Content-Type: application/json' \
-    -d "{\"storage_name\":\"$storage\"}") || true
-  echo "  register $storage: HTTP $reg_code"
-  [[ "$reg_code" =~ ^2 ]] || { echo "✗ register $storage failed (HTTP $reg_code)"; exit 1; }
+verify_results() {
+  echo -e "\n--- MinIO1 bucket contents ---"
+  docker exec rucio-storage-testbed-minio1-1 bash -c \
+    "mc alias set local http://localhost:9000 minioadmin minioadmin --quiet && mc ls local/fts-test/"
 
-  fts_curl -X DELETE "$FTS/config/cloud_storage/$storage/$VO" -o /dev/null 2>&1 || true
+  echo -e "\n--- MinIO2 bucket contents ---"
+  docker exec rucio-storage-testbed-minio2-1 bash -c \
+    "mc alias set local http://localhost:9000 minioadmin minioadmin --quiet && mc ls local/fts-test/"
+}
 
-  cat > /tmp/s3creds.json << ENDJSON
-{"vo_name":"$VO","access_token":"minioadmin","access_token_secret":"minioadmin"}
-ENDJSON
-  http_check "grant VO access to $storage" \
-    "$(fts_curl -o /dev/null -w '%{http_code}' \
-      -X POST "$FTS/config/cloud_storage/$storage" \
-      -H 'Content-Type: application/json' \
-      -d @/tmp/s3creds.json)"
-done
+# ── Main Entry Point ────────────────────────────────────────────────────────
 
-delegate
+main() {
+  # Check if certificates exist before starting
+  if [[ ! -f "$CERT" ]]; then
+    echo "ERROR: $CERT not found. Run generate-certs.sh first."
+    exit 1
+  fi
 
-# ── S3 transfers ─────────────────────────────────────────────────────────────
-echo ""
-echo "=== S3: xrd1 → MinIO1 ==="
-JOB=$(submit_job \
-  "root://xrd1//rucio/fts-test-file" \
-  "s3://minio1:9000/fts-test/fts-test-file-from-xrd1")
-echo "  Job: $JOB"
-poll_job "$JOB"
+  wait_for_fts
+  register_s3_creds
+  delegate
+  run_transfers
+  verify_results
 
-echo ""
-echo "=== S3: MinIO1 → xrd2 ==="
-JOB=$(submit_job \
-  "s3://minio1:9000/fts-test/fts-test-file" \
-  "root://xrd2//rucio/fts-test-file-from-s3")
-echo "  Job: $JOB"
-poll_job "$JOB"
+  echo -e "\nAll tests done."
+}
 
-echo ""
-echo "=== S3: MinIO1 → MinIO2 (streamed, no native TPC) ==="
-JOB=$(submit_job \
-  "s3://minio1:9000/fts-test/fts-test-file" \
-  "s3://minio2:9000/fts-test/fts-test-file-copy")
-echo "  Job: $JOB"
-poll_job "$JOB"
-
-echo ""
-echo "--- MinIO1 bucket contents ---"
-docker exec rucio-storage-testbed-minio1-1 bash -c \
-  "mc alias set local http://localhost:9000 minioadmin minioadmin --quiet && mc ls local/fts-test/"
-
-echo ""
-echo "--- MinIO2 bucket contents ---"
-docker exec rucio-storage-testbed-minio2-1 bash -c \
-  "mc alias set local http://localhost:9000 minioadmin minioadmin --quiet && mc ls local/fts-test/"
-
-echo ""
-echo "All smoke tests done."
+# Call main
+main
