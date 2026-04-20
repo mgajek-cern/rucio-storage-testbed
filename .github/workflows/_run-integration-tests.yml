@@ -29,9 +29,6 @@ jobs:
         with:
           platforms: amd64
 
-      - name: Pull StoRM WebDAV image (needed for storm-cacerts generation)
-        run: docker pull --platform linux/amd64 ghcr.io/italiangrid/storm-webdav:v1.12.0
-
       - name: Generate certificates
         run: ./scripts/generate-certs.sh
 
