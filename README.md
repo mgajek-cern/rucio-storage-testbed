@@ -2,6 +2,15 @@
 
 Multi-architecture Rucio + FTS3 integration testbed with XRootD, WebDAV, S3, StoRM WebDAV and Keycloak OIDC authentication. Enables end-to-end transfer testing on both `linux/amd64` and `linux/arm64`, including Apple Silicon Macs.
 
+## Features in a nutshell
+
+  * **OIDC Bearer Token Orchestration:** Validated delegation flow from `rucio-oidc` conveyors to `fts-oidc` for token-based transfers.
+  * **XRootD SciTokens Integration:** Full support for `root://` TPC using the `xrootd-scitokens` plugin with audience-specific verification.
+  * **StoRM WebDAV HTTP-TPC:** StoRM setup with OIDC policy enforcement and bearer-token-mediated transfers.
+  * **Cross-Architecture Support:** Native `arm64` support for all services, including custom-built FTS3 and XRootD images for Silicon Macs.
+  * **Infrastructure-as-Code Bootstrap:** Automated setup of the entire Rucio topology, distances and OIDC identity providers in one command.
+  * **Resilient Test Suite:** Built-in validation of Rucio rule states, lock counts and Adler32 checksum streaming for minimal storage images.
+
 ## Quick start
 
 ```bash
@@ -16,7 +25,6 @@ docker compose up -d
 
 # 4. Run transfer tests
 ./scripts/test-rucio-transfers.sh
-./scripts/test-fts-with-storm-webdav.sh
 ```
 
 ## Stack
@@ -29,7 +37,7 @@ docker compose up -d
 | `rucio-oidc` | Rucio server — OIDC auth via Keycloak | 8448 |
 | `keycloak` | OIDC identity provider (token exchange enabled) | 8443 |
 | `xrd1` / `xrd2` | XRootD storage endpoints | 1094 / 1095 |
-| `webdav1` / `webdav2` | WebDAV storage endpoints (Apache mod_dav) | 443 / 444 |
+| `webdav1` / `webdav2` | WebDAV storage endpoints (Apache mod\_dav) | 443 / 444 |
 | `minio1` / `minio2` | S3-compatible storage | 9000 / 9002 |
 | `storm1` / `storm2` | StoRM WebDAV (HTTP TPC + OIDC token auth) | 8440 / 8441 |
 
@@ -45,26 +53,16 @@ docker compose up -d
 ## Tests
 
 ```bash
-./scripts/test-fts-with-xrootd.py   # FTS + XRootD TPC (GSI proxy)
-./scripts/test-fts-with-s3.sh       # FTS + S3/MinIO
-./scripts/test-fts-with-webdav.sh   # FTS + WebDAV (Apache mod_dav)
-./scripts/test-fts-with-storm-webdav.sh # fts-oidc + StoRM WebDAV HTTP TPC (OIDC token)
-./scripts/test-rucio-transfers.sh   # Rucio end-to-end (userpass + OIDC)
+./scripts/test-fts-with-xrootd.py        # FTS + XRootD TPC (GSI proxy)
+./scripts/test-fts-with-s3.sh            # FTS + S3/MinIO
+./scripts/test-fts-with-webdav.sh        # FTS + WebDAV (Apache mod_dav)
+./scripts/test-fts-with-storm-webdav.sh  # fts-oidc + StoRM WebDAV HTTP TPC (OIDC token)
+./scripts/test-rucio-transfers.sh        # Rucio end-to-end (userpass + OIDC)
 ```
 
 ## Documentation
 
-- [docs/certificates.md](docs/certificates.md) — Certificate generation and trust anchor setup
-- [docs/oidc-setup.md](docs/oidc-setup.md) — OIDC configuration (Keycloak, fts-oidc, StoRM)
-- [docs/storage-integration-testing.md](docs/storage-integration-testing.md) — Storage test guide
-- [docs/fts-multiarch-build.md](docs/fts-multiarch-build.md) — FTS3 multi-arch image build
-
-## TODO
-
-- [x] Bearer token delegation from rucio-oidc conveyor to fts-oidc for STORM RSEs (pending Rucio version support for OIDC token forwarding in conveyor)
-- [x] XRootD SciTokens: add xrd3/xrd4 with xrootd-scitokens plugin for full bearer token TPC on `root://` protocol
-- ~~[ ] intertwin/teapot: evaluate as a multi-tenancy StoRM WebDAV front-end for WLCG token scenarios~~
-- [ ] k8s tutorial — map and organize knowledge within the forked repository
+Documentation can be found in the [docs folder](./docs/).
 
 ## References
 
@@ -72,5 +70,3 @@ docker compose up -d
 - [rucio/k8s-tutorial](https://github.com/rucio/k8s-tutorial)
 - [FTS3](https://gitlab.cern.ch/fts/fts3)
 - [StoRM WebDAV](https://github.com/italiangrid/storm-webdav)
-- [RFC 2518 (WebDAV)](https://datatracker.ietf.org/doc/html/rfc2518)
-- [WLCG Bearer Token Profile](https://zenodo.org/records/3526985)
