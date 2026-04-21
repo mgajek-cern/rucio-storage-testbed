@@ -16,7 +16,7 @@ ra_oidc() { docker exec "$RUCIO_OIDC" rucio-admin -S userpass -u ddmlab --passwo
 wait_for_infrastructure() {
     echo "=== Waiting for Rucio and Keycloak ==="
     for i in $(seq 1 30); do
-        code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8448/ping 2>/dev/null) || true
+        code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8090/ping 2>/dev/null) || true
         [[ "$code" == "200" ]] && { echo "  ✓ rucio-oidc ready"; break; }
         echo "  [$i] rucio-oidc HTTP $code — waiting..."; sleep 5
     done

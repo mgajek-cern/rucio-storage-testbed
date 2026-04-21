@@ -80,7 +80,7 @@ jobs:
         run: |
           for i in $(seq 1 40); do
             code=$(curl -s -o /dev/null -w '%{http_code}' \
-              http://localhost:8445/ping) || true
+              http://localhost:8070/ping) || true
             [[ "$code" == "200" ]] && { echo "Rucio ready"; exit 0; }
             echo "  [$i] HTTP $code"; sleep 5
           done

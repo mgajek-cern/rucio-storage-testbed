@@ -164,6 +164,9 @@ validate_rule() {
 
 test_xrootd_gsi() {
   echo -e "\n[ Test: XRootD GSI (XRD1 -> XRD2) ]"
+
+  delegate_proxy
+
   local scope=test name="gsi-$(date +%s)"
   seed_and_register "XRD1" "$scope" "$name" "$XRD1" "xrootd" "$RUCIO"
   local rule_id
@@ -224,7 +227,6 @@ test_xrootd_oidc() {
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 main() {
-  delegate_proxy
   test_xrootd_gsi
   test_storm_oidc
   test_xrootd_oidc

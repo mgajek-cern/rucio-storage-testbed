@@ -452,7 +452,7 @@ services:
     environment:
       - REQUESTS_CA_BUNDLE=/etc/grid-security/certificates/rucio_ca.pem
     ports:
-      - "8445:80"
+      - "8070:80"
     depends_on:
       ruciodb:
         condition: service_healthy
@@ -488,7 +488,7 @@ services:
     environment:
       - REQUESTS_CA_BUNDLE=/etc/grid-security/certificates/rucio_ca.pem
     ports:
-      - "8448:80"
+      - "8090:80"
     depends_on:
       ruciodb-oidc:
         condition: service_healthy

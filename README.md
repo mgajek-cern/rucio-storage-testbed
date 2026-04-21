@@ -2,6 +2,8 @@
 
 Multi-architecture Rucio + FTS3 integration testbed with XRootD, WebDAV, S3, StoRM WebDAV and Keycloak OIDC authentication. Enables end-to-end transfer testing on both `linux/amd64` and `linux/arm64`, including Apple Silicon Macs.
 
+> **Design Goal:** This testbed is designed to validate **service-to-service orchestration**. While user interaction is simplified via `USERPASS` to streamline automation, the backend tests **OIDC token-based submission** and **GSI proxy delegation** across the Rucio-FTS-Storage chain.
+
 ## Features in a nutshell
 
 - **OIDC Bearer Token Orchestration:** Validated delegation flow from `rucio-oidc` conveyors to `fts-oidc` for token-based transfers.
@@ -91,8 +93,8 @@ sequenceDiagram
 |---|---|---|
 | `fts` | FTS3 transfer server (GSI proxy auth, multi-arch) | 8446 |
 | `fts-oidc` | FTS3 transfer server (OIDC bearer token auth) | 8447 |
-| `rucio` | Rucio server — userpass auth | 8445 |
-| `rucio-oidc` | Rucio server — OIDC auth via Keycloak | 8448 |
+| `rucio` | Rucio server — userpass auth | 8070 |
+| `rucio-oidc` | Rucio server — OIDC auth via Keycloak | 8090 |
 | `keycloak` | OIDC identity provider (token exchange enabled) | 8443 |
 | `xrd1` / `xrd2` | XRootD storage endpoints | 1094 / 1095 |
 | `webdav1` / `webdav2` | WebDAV storage endpoints (Apache mod\_dav) | 443 / 444 |
