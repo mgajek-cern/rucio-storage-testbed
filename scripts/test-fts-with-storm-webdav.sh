@@ -14,7 +14,7 @@ FTS_OIDC_CONTAINER=rucio-storage-testbed-fts-oidc-1
 fetch_token() {
   docker exec "$FTS_OIDC_CONTAINER" curl -sk \
     -u "rucio-oidc:rucio-oidc-secret" \
-    -d "grant_type=password&username=jdoe2&password=secret" \
+    -d "grant_type=password&username=randomaccount&password=secret" \
     https://keycloak:8443/realms/rucio/protocol/openid-connect/token \
     | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])"
 }

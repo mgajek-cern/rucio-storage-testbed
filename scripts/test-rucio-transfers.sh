@@ -16,13 +16,14 @@ FTS=rucio-storage-testbed-fts-1
 
 # ── Auth & Daemon Helpers ─────────────────────────────────────────────────────
 
-rc_userpass() {
+# Targets the standard Rucio instance which uses x.509 certuficates for auth
+rc_std() {
   docker exec "$CLIENT" rucio --config /opt/rucio/etc/userpass-client.cfg "$@"
 }
 
+# Targets the OIDC-enabled Rucio instance
 rc_oidc() {
-  docker exec "$RUCIO_OIDC" rucio -S userpass -u ddmlab --password secret \
-    --host http://rucio-oidc --auth-host http://rucio-oidc "$@"
+  docker exec "$CLIENT" rucio --config /opt/rucio/etc/userpass-client-for-rucio-oidc.cfg "$@"
 }
 
 run_daemons() {
@@ -166,29 +167,33 @@ test_xrootd_gsi() {
   local scope=test name="gsi-$(date +%s)"
   seed_and_register "XRD1" "$scope" "$name" "$XRD1" "xrootd" "$RUCIO"
   local rule_id
-  rule_id=$(rc_userpass rule add "$scope:$name" --copies 1 --rses XRD2 \
+  rule_id=$(rc_std rule add "$scope:$name" --copies 1 --rses XRD2 \
               | grep -v WARNING | tail -1)
   run_daemons "$RUCIO"
-  validate_rule "rc_userpass" "$rule_id" "XRootD GSI"
+  validate_rule "rc_std" "$rule_id" "XRootD GSI"
 }
 
 test_storm_oidc() {
   echo -e "\n[ Test: StoRM OIDC (STORM1 -> STORM2) ]"
   local scope=test name="storm-$(date +%s)"
 
-  # Pre-create destination directory on STORM2 to avoid StoRM 409 Conflict.
+  # Pre-calculate destination paths
   local dest_pfn dest_fpath
   dest_pfn=$(compute_pfn "STORM2" "$scope" "$name" "$RUCIO_OIDC")
   dest_fpath=$(pfn_to_local_path "STORM2" "$dest_pfn")
-  docker exec --user root \
-    -e DDIR="$(dirname "$dest_fpath")" "$STORM2" sh -c '
-      mkdir -p "$DDIR" && chown storm:storm "$DDIR"
-    '
+  local dest_dir=$(dirname "$dest_fpath")
 
+  # Fix destination directory and permissions
+  echo "  Pre-creating destination path: $dest_dir"
+  docker exec --user root "$STORM2" mkdir -p "$dest_dir"
+  docker exec --user root "$STORM2" chown -R storm:storm "/storage/data/$scope"
+
+  # Proceed with source seeding and rule creation
   seed_and_register "STORM1" "$scope" "$name" "$STORM1" "storm" "$RUCIO_OIDC"
+
   local rule_id
-  rule_id=$(rc_oidc rule add "$scope:$name" --copies 1 --rses STORM2 \
-              | grep -v WARNING | tail -1)
+  rule_id=$(rc_oidc add-rule "$scope:$name" 1 STORM2 | grep -E -o '[0-9a-f]{32}')
+
   run_daemons "$RUCIO_OIDC"
   validate_rule "rc_oidc" "$rule_id" "StoRM OIDC"
 }

@@ -80,9 +80,9 @@
   ],
   "users": [
     {
-      "username": "jdoe2",
+      "username": "randomaccount",
       "enabled": true,
-      "email": "jdoe2@rucio",
+      "email": "randomaccount@rucio",
       "emailVerified": true,
       "realmRoles": [ "offline_access" ],
       "credentials": [

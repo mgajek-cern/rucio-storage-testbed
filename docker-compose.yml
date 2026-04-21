@@ -553,12 +553,13 @@ services:
       - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
       - ./certs/rucio_ca.pem:/etc/grid-security/certificates/rucio_ca.pem:ro
       - ./config/rucio/userpass-client.cfg:/opt/rucio/etc/userpass-client.cfg:ro
-      - ./config/rucio/oidc-client.cfg:/opt/rucio/etc/oidc-client.cfg:ro
+      - ./config/rucio/userpass-client-for-rucio-oidc.cfg:/opt/rucio/etc/userpass-client-for-rucio-oidc.cfg:ro
       - ./scripts:/scripts:ro
     command: ["/bin/bash", "-c", "while true; do sleep 60; done"]
 
 networks:
   rucio-storage-testbed:
+    name: rucio-testbed-net
 
 volumes:
   ftsdb-data:

@@ -49,24 +49,26 @@ restart_storm_nodes() {
 
 setup_accounts_and_identities() {
     echo "=== Configuring Rucio Accounts ==="
-    ra account add --type SERVICE --email ddmlab@rucio ddmlab || true
-    ra_oidc account add --type SERVICE --email ddmlab@rucio ddmlab || true
 
-    ra account add --type USER --email jdoe@rucio jdoe || true
-    ra identity add --type USERPASS --id jdoe --email jdoe@rucio --account jdoe --password secret || true
-    ra_oidc account add --type USER --email jdoe2@rucio jdoe2 || true
+    ra account add --type SERVICE --email ddmlab@rucio ddmlab || true
+    ra identity add --type USERPASS --id ddmlab --email ddmlab@rucio --account ddmlab --password secret || true
+
+    ra_oidc account add --type SERVICE --email ddmlab@rucio ddmlab || true
+    ra_oidc identity add --type USERPASS --id ddmlab --email ddmlab@rucio --account ddmlab --password secret || true
+
+    ra_oidc account add --type USER --email randomaccount@rucio randomaccount || true
 
     echo "  Verifying Keycloak token endpoint..."
     AUTH=$(echo -n "rucio-oidc:rucio-oidc-secret" | base64)
     for i in $(seq 1 12); do
         code=$(docker exec "$RUCIO_OIDC" curl -s -o /dev/null -w '%{http_code}' \
             -X POST https://keycloak:8443/realms/rucio/protocol/openid-connect/token \
-            -H "Authorization: Basic $AUTH" -d "grant_type=password&username=jdoe2&password=secret" 2>/dev/null) || true
+            -H "Authorization: Basic $AUTH" -d "grant_type=password&username=randomaccount&password=secret" 2>/dev/null) || true
         [[ "$code" == "200" ]] && break
         sleep 5
     done
 
-    echo "  Registering OIDC identity for jdoe2..."
+    echo "  Registering OIDC identity for randomaccount..."
     docker exec "$RUCIO_OIDC" python3 -c "
 import urllib.request, urllib.parse, json, base64
 from rucio.core.identity import add_identity, add_account_identity
@@ -74,7 +76,7 @@ from rucio.common.types import InternalAccount
 from rucio.common import exception
 
 try:
-    data = urllib.parse.urlencode({'grant_type':'password','username':'jdoe2','password':'secret'}).encode()
+    data = urllib.parse.urlencode({'grant_type':'password','username':'randomaccount','password':'secret'}).encode()
     _auth = base64.b64encode(b'rucio-oidc:rucio-oidc-secret').decode()
     req = urllib.request.Request('https://keycloak:8443/realms/rucio/protocol/openid-connect/token',
         data=data, headers={'Authorization': f'Basic {_auth}'})
@@ -82,10 +84,10 @@ try:
     claims = json.loads(base64.urlsafe_b64decode(resp['access_token'].split('.')[1] + '=='))
     identity = claims['iss'] + '#' + claims['sub']
 
-    try: add_identity(identity, 'OIDC', 'jdoe2@rucio')
+    try: add_identity(identity, 'OIDC', 'randomaccount@rucio')
     except exception.Duplicate: pass
 
-    try: add_account_identity(identity, 'OIDC', InternalAccount('jdoe2'), 'jdoe2@rucio')
+    try: add_account_identity(identity, 'OIDC', InternalAccount('randomaccount'), 'randomaccount@rucio')
     except exception.Duplicate: pass
     print(f'  ✓ Identity registered: {identity}')
 except Exception as e:
@@ -233,18 +235,17 @@ main() {
     # RSEs registered on both Rucio instances
     for rse in XRD1 XRD2 WEBDAV1 WEBDAV2 STORM1 STORM2; do
         ra account set-limits root "$rse" infinity || true
-        ra account set-limits jdoe "$rse" infinity || true
         ra account set-limits ddmlab "$rse" infinity || true
 
         ra_oidc account set-limits root "$rse" infinity || true
-        ra_oidc account set-limits jdoe2 "$rse" infinity || true
+        ra_oidc account set-limits randomaccount "$rse" infinity || true
         ra_oidc account set-limits ddmlab "$rse" infinity || true
     done
 
     # RSEs registered only on the OIDC instance (SciTokens-protected XRootD)
     for rse in XRD3 XRD4; do
         ra_oidc account set-limits root "$rse" infinity || true
-        ra_oidc account set-limits jdoe2 "$rse" infinity || true
+        ra_oidc account set-limits randomaccount "$rse" infinity || true
         ra_oidc account set-limits ddmlab "$rse" infinity || true
     done
 
