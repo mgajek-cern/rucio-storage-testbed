@@ -8,7 +8,7 @@ Multi-architecture Rucio + FTS3 integration testbed with XRootD, WebDAV, S3, Sto
 - **XRootD SciTokens Integration:** Full support for `root://` TPC using the `xrootd-scitokens` plugin with audience-specific verification.
 - **StoRM WebDAV HTTP-TPC:** StoRM setup with OIDC policy enforcement and bearer-token-mediated transfers.
 - **Cross-Architecture Support:** Native `arm64` support for all services, including custom-built FTS3 and XRootD images for Silicon Macs.
-- **Infrastructure-as-Code Bootstrap:** Automated setup of the entire Rucio topology, distances and OIDC identity providers in one command.
+- **One-Command Topology Bootstrap:** Automated setup of the entire Rucio topology, distances and OIDC identity providers in one command.
 - **Resilient Test Suite:** Built-in validation of Rucio rule states, lock counts and Adler32 checksum streaming for minimal storage images.
 
 > Future work includes reference implementations using the `rucio-clients`, K8s migration, failure injection and federation. See [ROADMAP.md](./ROADMAP.md).
