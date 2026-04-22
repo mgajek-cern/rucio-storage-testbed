@@ -47,7 +47,7 @@ except Exception as e:
     sys.exit(1)
 
 # ── Step 2: submit transfer xrd1 → xrd2 ──────────────────────────────────────
-print(f"\n=== Step 2: submit transfer ===")
+print("\n=== Step 2: submit transfer ===")
 print(f"  {SRC} -> {DST}")
 try:
     transfer = fts3.new_transfer(SRC, DST)
@@ -67,11 +67,11 @@ for i in range(1, 25):
     try:
         status = fts3.get_job_status(context, job_id, list_files=False)
         state = status["job_state"]
-        print(f"  [{i*5:3d}s] {state}")
+        print(f"  [{i * 5:3d}s] {state}")
         if state in terminal:
             break
     except Exception as e:
-        print(f"  [{i*5:3d}s] ERROR polling: {e}")
+        print(f"  [{i * 5:3d}s] ERROR polling: {e}")
 
 print(f"\nFinal state: {state}")
 

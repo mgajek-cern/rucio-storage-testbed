@@ -712,8 +712,8 @@ class Fts3TransferStatusReport(TransferStatusReport):
 
     def __str__(self):
         return (
-            f'Transfer {self._transfer_id} of {self._file_metadata["scope"]}:{self._file_metadata["name"]} '
-            f'{self._file_metadata["src_rse"]} --({self._file_metadata["request_id"]})-> {self._file_metadata["dst_rse"]}'
+            f"Transfer {self._transfer_id} of {self._file_metadata['scope']}:{self._file_metadata['name']} "
+            f"{self._file_metadata['src_rse']} --({self._file_metadata['request_id']})-> {self._file_metadata['dst_rse']}"
         )
 
     def initialize(
@@ -885,9 +885,7 @@ class FTS3CompletionMessageTransferStatusReport(Fts3TransferStatusReport):
         new_state = None
         if str(
             fts_message["t_final_transfer_state"]
-        ) == FTS_COMPLETE_STATE.OK and not fts_message.get(
-            "is_archiving"
-        ):  # pylint:disable=no-member
+        ) == FTS_COMPLETE_STATE.OK and not fts_message.get("is_archiving"):  # pylint:disable=no-member
             new_state = RequestState.DONE
         elif str(fts_message["t_final_transfer_state"]) == FTS_COMPLETE_STATE.ERROR:
             request = self.request(session)
@@ -1688,36 +1686,36 @@ class FTS3Transfertool(Transfertool):
             params_dict[storage_element]["operations"] = {policy: {"staging": staging}}
         if inbound_max_active is not None:
             try:
-                params_dict[storage_element]["se_info"][
-                    "inbound_max_active"
-                ] = inbound_max_active
+                params_dict[storage_element]["se_info"]["inbound_max_active"] = (
+                    inbound_max_active
+                )
             except KeyError:
                 params_dict[storage_element]["se_info"] = {
                     "inbound_max_active": inbound_max_active
                 }
         if outbound_max_active is not None:
             try:
-                params_dict[storage_element]["se_info"][
-                    "outbound_max_active"
-                ] = outbound_max_active
+                params_dict[storage_element]["se_info"]["outbound_max_active"] = (
+                    outbound_max_active
+                )
             except KeyError:
                 params_dict[storage_element]["se_info"] = {
                     "outbound_max_active": outbound_max_active
                 }
         if inbound_max_throughput is not None:
             try:
-                params_dict[storage_element]["se_info"][
-                    "inbound_max_throughput"
-                ] = inbound_max_throughput
+                params_dict[storage_element]["se_info"]["inbound_max_throughput"] = (
+                    inbound_max_throughput
+                )
             except KeyError:
                 params_dict[storage_element]["se_info"] = {
                     "inbound_max_throughput": inbound_max_throughput
                 }
         if outbound_max_throughput is not None:
             try:
-                params_dict[storage_element]["se_info"][
-                    "outbound_max_throughput"
-                ] = outbound_max_throughput
+                params_dict[storage_element]["se_info"]["outbound_max_throughput"] = (
+                    outbound_max_throughput
+                )
             except KeyError:
                 params_dict[storage_element]["se_info"] = {
                     "outbound_max_throughput": outbound_max_throughput

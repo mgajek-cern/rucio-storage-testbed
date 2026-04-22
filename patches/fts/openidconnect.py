@@ -1,12 +1,9 @@
 import logging
-from datetime import datetime
 
 import jwt
-from oic import rndstr
 from oic.extension.message import TokenIntrospectionRequest, TokenIntrospectionResponse
-from oic.oic import Client, Grant, Token
-from oic.oic.message import AccessTokenResponse, Message, RegistrationResponse
-from oic.utils import time_util
+from oic.oic import Client
+from oic.oic.message import RegistrationResponse
 from oic.utils.authn.client import CLIENT_AUTHN_METHOD
 
 log = logging.getLogger(__name__)

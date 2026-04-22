@@ -179,7 +179,6 @@ class HermesService(str, enum.Enum):
 
 
 class RseAttr:
-
     """
     List of functional RSE attributes.
 
@@ -256,8 +255,8 @@ RSE_ATTRS_STR = Literal[
     "multihop_tombstone_delay",
     "naming_convention",
     "oidc_base_path",
-    "oidc_support" "physgroup",
-    "qbittorrent_management_address" "rule_approvers",
+    "oidc_supportphysgroup",
+    "qbittorrent_management_addressrule_approvers",
     "s3_url_style",
     "simulate_multirange",
     "site",
