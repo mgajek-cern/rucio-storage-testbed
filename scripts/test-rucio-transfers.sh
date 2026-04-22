@@ -167,7 +167,7 @@ test_xrootd_gsi() {
 
   delegate_proxy
 
-  local scope=test name="gsi-$(date +%s)"
+  local scope="ddmlab" name="gsi-$(date +%s)"
   seed_and_register "XRD1" "$scope" "$name" "$XRD1" "xrootd" "$RUCIO"
   local rule_id
   rule_id=$(rc_std rule add "$scope:$name" --copies 1 --rses XRD2 \
@@ -178,7 +178,7 @@ test_xrootd_gsi() {
 
 test_storm_oidc() {
   echo -e "\n[ Test: StoRM OIDC (STORM1 -> STORM2) ]"
-  local scope=test name="storm-$(date +%s)"
+  local scope="ddmlab" name="storm-$(date +%s)"
 
   # Pre-calculate destination paths
   local dest_pfn dest_fpath
@@ -203,7 +203,7 @@ test_storm_oidc() {
 
 test_xrootd_oidc() {
   echo -e "\n[ Test: XRootD OIDC (XRD3 -> XRD4) ]"
-  local scope=test name="xrd-oidc-$(date +%s)"
+  local scope="ddmlab" name="xrd-oidc-$(date +%s)"
 
   # Pre-create destination directory tree on xrd4. xrootd's HTTP layer doesn't
   # auto-mkdir intermediate directories during a TPC COPY into a deep path,

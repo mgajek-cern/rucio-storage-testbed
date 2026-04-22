@@ -1,0 +1,11 @@
+FROM rucio/rucio-clients@sha256:d03fd88c2b6fe50a64a95cc7001486208aa115e3997658359158746eb178cc1d
+
+USER root
+
+RUN dnf install -y --setopt=install_weak_deps=False dnf-plugins-core \
+ && dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo \
+ && dnf install -y --setopt=install_weak_deps=False docker-ce-cli \
+ && dnf clean all \
+ && rm -rf /var/cache/dnf
+
+RUN docker --version

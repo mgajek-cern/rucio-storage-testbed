@@ -52,9 +52,13 @@ setup_accounts_and_identities() {
 
     ra account add --type SERVICE --email ddmlab@rucio ddmlab || true
     ra identity add --type USERPASS --id ddmlab --email ddmlab@rucio --account ddmlab --password secret || true
+    ra account add-attribute ddmlab --key admin --value True || true
+    ra account update --account ddmlab --key type --value SERVICE || true
 
     ra_oidc account add --type SERVICE --email ddmlab@rucio ddmlab || true
     ra_oidc identity add --type USERPASS --id ddmlab --email ddmlab@rucio --account ddmlab --password secret || true
+    ra_oidc account add-attribute ddmlab --key admin --value True || true
+    ra_oidc account update --account ddmlab --key type --value SERVICE || true
 
     ra_oidc account add --type USER --email randomaccount@rucio randomaccount || true
 
@@ -103,7 +107,7 @@ configure_rses() {
     local label=$3
     echo "=== Configuring RSEs on $label ==="
 
-    # XRD1/XRD2 — XRootD with GSI proxy auth (root:// scheme).
+    # XRD1/XRD2 on both instances (GSI auth works everywhere).
     for rse in XRD1 XRD2; do
         local host=$(echo "$rse" | tr '[:upper:]' '[:lower:]')
         $cmd rse add "$rse" || true
@@ -113,7 +117,7 @@ configure_rses() {
             --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
     done
 
-    # WEBDAV1/WEBDAV2 — Apache WebDAV with GSI proxy auth.
+    # WEBDAV on both instances.
     for rse in WEBDAV1 WEBDAV2; do
         local host=$(echo "$rse" | tr '[:upper:]' '[:lower:]')
         $cmd rse add "$rse" || true
@@ -123,8 +127,12 @@ configure_rses() {
             --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
     done
 
-    # XRD3/XRD4 — XRootD with SciTokens (HTTP-TPC via davs://).
+    # OIDC-only RSEs: XRD3/XRD4 (SciTokens) and STORM1/STORM2 (OIDC bearer).
+    # The classic Rucio instance has no idpsecrets configured and cannot
+    # mint OIDC tokens, so registering these on classic leaves stray
+    # requests that fail in the submitter.
     if [[ "$label" == "Rucio-OIDC" ]]; then
+
         for rse in XRD3 XRD4; do
             local host=$(echo "$rse" | tr '[:upper:]' '[:lower:]')
             $cmd rse add "$rse" || true
@@ -132,55 +140,43 @@ configure_rses() {
             $cmd rse set-attribute --rse "$rse" --key oidc_support --value True
             $cmd rse set-attribute --rse "$rse" --key auth_type --value OIDC
             $cmd rse set-attribute --rse "$rse" --key audience --value "https://${host}:1094"
-
             $cmd rse set-attribute --rse "$rse" --key verify_checksum --value False
             $cmd rse add-protocol "$rse" --scheme davs --hostname "$host" --port 1094 --prefix /data \
                 --impl rucio.rse.protocols.gfal.Default \
                 --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
         done
+
+        for rse in STORM1 STORM2; do
+            local host=$(echo "$rse" | tr '[:upper:]' '[:lower:]')
+            $cmd rse add "$rse" || true
+            $cmd rse set-attribute --rse "$rse" --key fts --value "$FTS_OIDC"
+            $cmd rse set-attribute --rse "$rse" --key oidc_support --value True
+            $cmd rse set-attribute --rse "$rse" --key auth_type --value OIDC
+            $cmd rse set-attribute --rse "$rse" --key audience --value "$host"
+            $cmd rse set-attribute --rse "$rse" --key verify_checksum --value False
+
+            local scheme="davs" port="8443"
+            local domains='{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
+
+            if [[ "$rse" == "STORM1" ]]; then
+                scheme="http"; port="8085"
+                domains='{"wan":{"read":0,"write":0,"delete":0,"third_party_copy_read":1,"third_party_copy_write":0},"lan":{"read":0,"write":0,"delete":0}}'
+            fi
+
+            $cmd rse add-protocol "$rse" --scheme "$scheme" --hostname "$host" --port "$port" --prefix /data \
+                --impl rucio.rse.protocols.gfal.Default --domain-json "$domains"
+        done
     fi
 
-    # STORM1/STORM2 — StoRM WebDAV with OIDC bearer-token auth.
-    for rse in STORM1 STORM2; do
-        local host=$(echo "$rse" | tr '[:upper:]' '[:lower:]')
-        $cmd rse add "$rse" || true
-        $cmd rse set-attribute --rse "$rse" --key fts --value "$FTS_OIDC"
-        $cmd rse set-attribute --rse "$rse" --key oidc_support --value True
-        $cmd rse set-attribute --rse "$rse" --key auth_type --value OIDC
-        $cmd rse set-attribute --rse "$rse" --key audience --value "$host"
-
-        # Disable checksum verification for OIDC StoRM RSEs to avoid
-        # 00000000 != real_checksum errors (storm-webdav image lacks python3
-        # so seed-time adler32 placeholder differs from on-disk computed value).
-        if [[ "$label" == "Rucio-OIDC" ]]; then
-            $cmd rse set-attribute --rse "$rse" --key verify_checksum --value False
-        fi
-
-        local scheme="davs"; local port="8443"
-        local domains='{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
-
-        # STORM1 source on OIDC instance: use plain HTTP for TPC pull because
-        # CANL rejects self-signed CAs on the TPC client side regardless of
-        # trust anchors. This matches the documented test-fts-with-storm-webdav
-        # workaround. Destination side (write) uses davs:// with full TLS+OIDC.
-        if [[ "$label" == "Rucio-OIDC" && "$rse" == "STORM1" ]]; then
-            scheme="http"; port="8085"
-            domains='{"wan":{"read":0,"write":0,"delete":0,"third_party_copy_read":1,"third_party_copy_write":0},"lan":{"read":0,"write":0,"delete":0}}'
-        fi
-
-        $cmd rse add-protocol "$rse" --scheme "$scheme" --hostname "$host" --port "$port" --prefix /data \
-            --impl rucio.rse.protocols.gfal.Default --domain-json "$domains"
-    done
-
-    # Inter-RSE distances for the conveyor's rule resolution.
+    # Distances — XRD1/2 and WEBDAV on both; OIDC-only pairs only on OIDC.
     $cmd rse add-distance XRD1 XRD2 --distance 1 || true
     $cmd rse add-distance XRD2 XRD1 --distance 1 || true
     $cmd rse add-distance WEBDAV1 WEBDAV2 --distance 1 || true
     $cmd rse add-distance WEBDAV2 WEBDAV1 --distance 1 || true
-    $cmd rse add-distance STORM1 STORM2 --distance 1 || true
-    $cmd rse add-distance STORM2 STORM1 --distance 1 || true
 
     if [[ "$label" == "Rucio-OIDC" ]]; then
+        $cmd rse add-distance STORM1 STORM2 --distance 1 || true
+        $cmd rse add-distance STORM2 STORM1 --distance 1 || true
         $cmd rse add-distance XRD3 XRD4 --distance 1 || true
         $cmd rse add-distance XRD4 XRD3 --distance 1 || true
     fi
@@ -216,7 +212,35 @@ fts3.delegate(ctx, lifetime=datetime.timedelta(hours=48), force=True)
     done
 }
 
-# ── Main Orchestration ─────────────────────────────────────────────────────
+# ── Scopes & Quotas ─────────────────────────────────────────────────────────
+
+setup_scopes_and_quotas() {
+    echo "=== Configuring Scopes and Quotas ==="
+
+    # Create Scopes
+    ra scope add --account root --scope test || true
+    ra_oidc scope add --account root --scope test || true
+
+    ra_oidc scope add --account randomaccount --scope randomaccount || true
+
+    ra scope add --account ddmlab --scope ddmlab || true
+    ra_oidc scope add --account ddmlab --scope ddmlab || true
+
+    # Set Quotas for Classic Instance (ra)
+    for rse in XRD1 XRD2 WEBDAV1 WEBDAV2; do
+        ra account set-limits root "$rse" -1 || true
+        ra account set-limits ddmlab "$rse" -1 || true
+    done
+
+    # Set Quotas for OIDC Instance (ra_oidc)
+    for rse in STORM1 STORM2 XRD3 XRD4; do
+        ra_oidc account set-limits root "$rse" -1 || true
+        ra_oidc account set-limits randomaccount "$rse" -1 || true
+        ra_oidc account set-limits ddmlab "$rse" -1 || true
+    done
+}
+
+# ── Main ──────────────────────────────────────────────────────────────────────
 
 main() {
     wait_for_infrastructure
@@ -227,27 +251,8 @@ main() {
     configure_rses "ra" "$FTS" "Rucio-Classic"
     configure_rses "ra_oidc" "$FTS" "Rucio-OIDC"
 
-    echo "=== Configuring Scopes and Quotas ==="
-
-    ra scope add --account root --scope test || true
-    ra_oidc scope add --account root --scope test || true
-
-    # RSEs registered on both Rucio instances
-    for rse in XRD1 XRD2 WEBDAV1 WEBDAV2 STORM1 STORM2; do
-        ra account set-limits root "$rse" infinity || true
-        ra account set-limits ddmlab "$rse" infinity || true
-
-        ra_oidc account set-limits root "$rse" infinity || true
-        ra_oidc account set-limits randomaccount "$rse" infinity || true
-        ra_oidc account set-limits ddmlab "$rse" infinity || true
-    done
-
-    # RSEs registered only on the OIDC instance (SciTokens-protected XRootD)
-    for rse in XRD3 XRD4; do
-        ra_oidc account set-limits root "$rse" infinity || true
-        ra_oidc account set-limits randomaccount "$rse" infinity || true
-        ra_oidc account set-limits ddmlab "$rse" infinity || true
-    done
+    # Call the new function
+    setup_scopes_and_quotas
 
     setup_fts_oidc_provider
     restart_storm_nodes "Final JWKS Sync"

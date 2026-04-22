@@ -15,6 +15,9 @@ jobs:
           - name: xrd-scitokens
             file: ./Dockerfile.xrd-scitokens
             image: test-xrd-scitokens
+          - name: rucio-client-dind
+            file: ./Dockerfile.rucio-client-dind
+            image: rucio-client-dind
     steps:
       - name: Checkout
         uses: actions/checkout@v4

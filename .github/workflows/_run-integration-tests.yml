@@ -145,8 +145,13 @@ jobs:
       - name: XRootD TPC test (OIDC token, no GSI)
         run: ./scripts/test-fts-with-xrootd-scitokens.sh
 
-      - name: Rucio transfer test
+      - name: Rucio E2E transfer test
         run: ./scripts/test-rucio-transfers.sh
+
+      - name: Rucio E2E transfer test (Python)
+        run: |
+          docker exec rucio-storage-testbed-rucio-client-1 \
+            python3 /scripts/test-rucio-transfers.py
 
       - name: Dump logs on failure
         if: failure()
