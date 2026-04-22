@@ -87,20 +87,6 @@ sequenceDiagram
 
 **Note on Test Implementation:** Similar to the OIDC flow, the test script uses `USERPASS` for the initial rule submission to simplify the CLI interaction. The backend Rucio Conveyor daemons are configured with host/service X.509 certificates to authenticate with FTS, which then uses delegated proxies to authorize the third-party copy (TPC) at the storage level.
 
-## Stack
-
-| Service | Description | Port |
-|---|---|---|
-| `fts` | FTS3 transfer server (GSI proxy auth, multi-arch) | 8446 |
-| `fts-oidc` | FTS3 transfer server (OIDC bearer token auth) | 8447 |
-| `rucio` | Rucio server — userpass auth | 8070 |
-| `rucio-oidc` | Rucio server — OIDC auth via Keycloak | 8090 |
-| `keycloak` | OIDC identity provider (token exchange enabled) | 8443 |
-| `xrd1` / `xrd2` | XRootD storage endpoints | 1094 / 1095 |
-| `webdav1` / `webdav2` | WebDAV storage endpoints (Apache mod\_dav) | 443 / 444 |
-| `minio1` / `minio2` | S3-compatible storage | 9000 / 9002 |
-| `storm1` / `storm2` | StoRM WebDAV (HTTP TPC + OIDC token auth) | 8440 / 8441 |
-
 ## Tests
 
 | Protocol / Target | Auth Model | Execution Command |
