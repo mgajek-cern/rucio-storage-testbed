@@ -88,6 +88,6 @@ echo -e "${BLUE}╚════════════════════�
 
 check_requirements
 install_kind
-install_chart_testing
+# install_chart_testing
 generate_configs
 print_summary

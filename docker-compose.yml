@@ -15,11 +15,11 @@ services:
     networks:
       - rucio-storage-testbed
     volumes:
-      - ./certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
-      - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
-      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
-      - ./scripts:/scripts:ro
-      - ./config/fts/gfal2_http_plugin.conf:/etc/gfal2.d/http_plugin.conf:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE:-.}/scripts:/scripts:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/fts/gfal2_http_plugin.conf:/etc/gfal2.d/http_plugin.conf:ro
     healthcheck:
       test: ["CMD", "curl", "-sk", "https://localhost:8446/whoami"]
       interval: 5s
@@ -51,10 +51,10 @@ services:
     networks:
       - rucio-storage-testbed
     volumes:
-      - ./certs/xrdcert.pem:/tmp/xrdcert.pem:ro
-      - ./certs/xrdkey.pem:/tmp/xrdkey.pem:ro
-      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
-      - ./config/xrootd/grid-mapfile:/etc/grid-security/grid-mapfile:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/xrdcert.pem:/tmp/xrdcert.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/xrdkey.pem:/tmp/xrdkey.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/xrootd/grid-mapfile:/etc/grid-security/grid-mapfile:ro
     entrypoint: >
       bash -c "
         mkdir -p /rucio &&
@@ -73,10 +73,10 @@ services:
     networks:
       - rucio-storage-testbed
     volumes:
-      - ./certs/xrdcert.pem:/tmp/xrdcert.pem:ro
-      - ./certs/xrdkey.pem:/tmp/xrdkey.pem:ro
-      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
-      - ./config/xrootd/grid-mapfile:/etc/grid-security/grid-mapfile:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/xrdcert.pem:/tmp/xrdcert.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/xrdkey.pem:/tmp/xrdkey.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/xrootd/grid-mapfile:/etc/grid-security/grid-mapfile:ro
 
   xrd3:
     build:
@@ -90,13 +90,13 @@ services:
     networks:
       - rucio-storage-testbed
     volumes:
-      - ./certs/xrdcert.pem:/tmp/xrdcert.pem:ro
-      - ./certs/xrdkey.pem:/tmp/xrdkey.pem:ro
-      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
-      - ./config/xrootd/xrdrucio.cfg:/etc/xrootd/xrdrucio.cfg.tmpl:ro
-      - ./config/xrootd/authdb:/etc/xrootd/authdb:ro
-      - ./config/xrootd/scitokens.conf:/etc/xrootd/scitokens.conf:ro
-      - ./scripts/xrootd/docker-entrypoint-oidc.sh:/usr/local/bin/docker-entrypoint.sh:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/xrdcert.pem:/tmp/xrdcert.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/xrdkey.pem:/tmp/xrdkey.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/xrootd/xrdrucio.cfg:/etc/xrootd/xrdrucio.cfg.tmpl:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/xrootd/authdb:/etc/xrootd/authdb:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/xrootd/scitokens.conf:/etc/xrootd/scitokens.conf:ro
+      - ${TESTBED_HOST_SOURCE:-.}/scripts/xrootd/docker-entrypoint-oidc.sh:/usr/local/bin/docker-entrypoint.sh:ro
     entrypoint: ["/bin/bash", "/usr/local/bin/docker-entrypoint.sh"]
 
   xrd4:
@@ -111,13 +111,13 @@ services:
     networks:
       - rucio-storage-testbed
     volumes:
-      - ./certs/xrdcert.pem:/tmp/xrdcert.pem:ro
-      - ./certs/xrdkey.pem:/tmp/xrdkey.pem:ro
-      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
-      - ./config/xrootd/xrdrucio.cfg:/etc/xrootd/xrdrucio.cfg.tmpl:ro
-      - ./config/xrootd/authdb:/etc/xrootd/authdb:ro
-      - ./config/xrootd/scitokens.conf:/etc/xrootd/scitokens.conf:ro
-      - ./scripts/xrootd/docker-entrypoint-oidc.sh:/usr/local/bin/docker-entrypoint.sh:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/xrdcert.pem:/tmp/xrdcert.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/xrdkey.pem:/tmp/xrdkey.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/xrootd/xrdrucio.cfg:/etc/xrootd/xrdrucio.cfg.tmpl:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/xrootd/authdb:/etc/xrootd/authdb:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/xrootd/scitokens.conf:/etc/xrootd/scitokens.conf:ro
+      - ${TESTBED_HOST_SOURCE:-.}/scripts/xrootd/docker-entrypoint-oidc.sh:/usr/local/bin/docker-entrypoint.sh:ro
     entrypoint: ["/bin/bash", "/usr/local/bin/docker-entrypoint.sh"]
 
   # FTS OIDC instance — bearer token auth, no GSI proxy
@@ -157,16 +157,16 @@ services:
     networks:
       - rucio-storage-testbed
     volumes:
-      - ./certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
-      - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
-      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
-      - ./scripts:/scripts:ro
-      - ./config/fts/fts3config-oidc:/etc/fts3/fts3config:ro
-      - ./config/fts/fts3restconfig-oidc:/etc/fts3/fts3restconfig:ro
-      - ./config/fts/gfal2_http_plugin.conf:/etc/gfal2.d/http_plugin.conf:ro
-      - ./scripts/fts/docker-entrypoint-oidc.sh:/docker-entrypoint.sh:ro
-      - ./patches/fts/middleware.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/config/middleware.py:ro
-      - ./patches/fts/openidconnect.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/lib/openidconnect.py:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE:-.}/scripts:/scripts:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/fts/fts3config-oidc:/etc/fts3/fts3config:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/fts/fts3restconfig-oidc:/etc/fts3/fts3restconfig:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/fts/gfal2_http_plugin.conf:/etc/gfal2.d/http_plugin.conf:ro
+      - ${TESTBED_HOST_SOURCE:-.}/scripts/fts/docker-entrypoint-oidc.sh:/docker-entrypoint.sh:ro
+      - ${TESTBED_HOST_SOURCE:-.}/patches/fts/middleware.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/config/middleware.py:ro
+      - ${TESTBED_HOST_SOURCE:-.}/patches/fts/openidconnect.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/lib/openidconnect.py:ro
     healthcheck:
       test: ["CMD", "curl", "-sk", "https://localhost:8446/whoami"]
       interval: 10s
@@ -254,9 +254,9 @@ services:
     networks:
       - rucio-storage-testbed
     volumes:
-      - ./certs/webdav1cert.pem:/etc/grid-security/hostcert.pem:ro
-      - ./certs/webdav1key.pem:/etc/grid-security/hostkey.pem:ro
-      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/webdav1cert.pem:/etc/grid-security/hostcert.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/webdav1key.pem:/etc/grid-security/hostkey.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
     entrypoint: >
       bash -c "
         . /etc/apache2/envvars &&
@@ -277,9 +277,9 @@ services:
     networks:
       - rucio-storage-testbed
     volumes:
-      - ./certs/webdav2cert.pem:/etc/grid-security/hostcert.pem:ro
-      - ./certs/webdav2key.pem:/etc/grid-security/hostkey.pem:ro
-      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/webdav2cert.pem:/etc/grid-security/hostcert.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/webdav2key.pem:/etc/grid-security/hostkey.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
     entrypoint: >
       bash -c "
         . /etc/apache2/envvars &&
@@ -319,14 +319,14 @@ services:
       - STORM_WEBDAV_OAUTH_ISSUERS_REFRESH_PERIOD_MINUTES=1
       - STORM_WEBDAV_JVM_OPTS=-Xms256m -Xmx512m -Djava.security.egd=file:/dev/./urandom -Dspring.config.location=optional:classpath:/application.yml,file:/app/application-issuers.yml,file:/app/application-policies.yml -Dlogging.level.org.italiangrid.storm.webdav.oauth=DEBUG -Dlogging.level.org.springframework.security=DEBUG
     volumes:
-      - ./certs/storm1cert.pem:/etc/grid-security/hostcert.pem:ro
-      - ./certs/storm1key.pem:/etc/grid-security/hostkey.pem:ro
-      - ./certs/trustanchors:/etc/grid-security/certificates:ro
-      - ./config/storm-webdav/storm-application-issuers.yml:/app/application-issuers.yml:ro
-      - ./config/storm-webdav/storm-application-policies.yml:/app/application-policies.yml:ro
-      - ./config/storm-webdav/data.properties:/etc/storm/webdav/sa.d/data.properties:ro
-      - ./certs/storm-cacerts:/opt/java/openjdk/lib/security/cacerts:ro
-      - ./config/storm-webdav/logback-access.xml:/etc/storm/webdav/logback-access.xml:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/storm1cert.pem:/etc/grid-security/hostcert.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/storm1key.pem:/etc/grid-security/hostkey.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/trustanchors:/etc/grid-security/certificates:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/storm-webdav/storm-application-issuers.yml:/app/application-issuers.yml:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/storm-webdav/storm-application-policies.yml:/app/application-policies.yml:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/storm-webdav/data.properties:/etc/storm/webdav/sa.d/data.properties:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/storm-cacerts:/opt/java/openjdk/lib/security/cacerts:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/storm-webdav/logback-access.xml:/etc/storm/webdav/logback-access.xml:ro
       - storm1-data:/storage/data
       - vomsdir:/etc/grid-security/vomsdir
     healthcheck:
@@ -363,14 +363,14 @@ services:
       - STORM_WEBDAV_OAUTH_ISSUERS_REFRESH_PERIOD_MINUTES=1
       - STORM_WEBDAV_JVM_OPTS=-Xms256m -Xmx512m -Djava.security.egd=file:/dev/./urandom -Dspring.config.location=optional:classpath:/application.yml,file:/app/application-issuers.yml,file:/app/application-policies.yml -Dlogging.level.org.italiangrid.storm.webdav.oauth=DEBUG -Dlogging.level.org.springframework.security=DEBUG
     volumes:
-      - ./certs/storm2cert.pem:/etc/grid-security/hostcert.pem:ro
-      - ./certs/storm2key.pem:/etc/grid-security/hostkey.pem:ro
-      - ./certs/trustanchors:/etc/grid-security/certificates:ro
-      - ./config/storm-webdav/storm-application-issuers.yml:/app/application-issuers.yml:ro
-      - ./config/storm-webdav/storm-application-policies.yml:/app/application-policies.yml:ro
-      - ./config/storm-webdav/data.properties:/etc/storm/webdav/sa.d/data.properties:ro
-      - ./certs/storm-cacerts:/opt/java/openjdk/lib/security/cacerts:ro
-      - ./config/storm-webdav/logback-access.xml:/etc/storm/webdav/logback-access.xml:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/storm2cert.pem:/etc/grid-security/hostcert.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/storm2key.pem:/etc/grid-security/hostkey.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/trustanchors:/etc/grid-security/certificates:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/storm-webdav/storm-application-issuers.yml:/app/application-issuers.yml:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/storm-webdav/storm-application-policies.yml:/app/application-policies.yml:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/storm-webdav/data.properties:/etc/storm/webdav/sa.d/data.properties:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/storm-cacerts:/opt/java/openjdk/lib/security/cacerts:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/storm-webdav/logback-access.xml:/etc/storm/webdav/logback-access.xml:ro
       - storm2-data:/storage/data
       - vomsdir:/etc/grid-security/vomsdir
     healthcheck:
@@ -406,9 +406,9 @@ services:
     networks:
       - rucio-storage-testbed
     volumes:
-      - ./config/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
-      - ./certs/keycloakcert.pem:/etc/x509/https/keycloakcert.pem:ro
-      - ./certs/keycloakkey.pem:/etc/x509/https/keycloakkey.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/keycloakcert.pem:/etc/x509/https/keycloakcert.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/keycloakkey.pem:/etc/x509/https/keycloakkey.pem:ro
     healthcheck:
       # Use HTTPS so we know TLS is actually serving, not just HTTP.
       # --no-check-certificate because the cert is signed by the rucio
@@ -475,14 +475,14 @@ services:
         python3 /scripts/rucio/bootstrap-db.py &&
         exec /docker-entrypoint.sh httpd -DFOREGROUND
     volumes:
-      - ./certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
-      - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
-      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
-      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/rucio_ca.pem:ro
-      - ./config/rucio/server.cfg:/opt/rucio/etc/rucio.cfg:ro
-      - ./config/rucio/alembic.ini:/opt/rucio/etc/alembic.ini:ro
-      - ./scripts:/scripts:ro
-      - ./certs/hostcert_with_key.pem:/etc/grid-security/hostcert_with_key.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/rucio_ca.pem:/etc/grid-security/certificates/rucio_ca.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/rucio/server.cfg:/opt/rucio/etc/rucio.cfg:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/rucio/alembic.ini:/opt/rucio/etc/alembic.ini:ro
+      - ${TESTBED_HOST_SOURCE:-.}/scripts:/scripts:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/hostcert_with_key.pem:/etc/grid-security/hostcert_with_key.pem:ro
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost/ping"]
       interval: 10s
@@ -513,17 +513,17 @@ services:
         python3 /scripts/rucio/bootstrap-db.py &&
         exec /docker-entrypoint.sh httpd -DFOREGROUND
     volumes:
-      - ./config/rucio/oidc-server.cfg:/opt/rucio/etc/rucio.cfg:ro
-      - ./config/rucio/alembic-oidc.ini:/opt/rucio/etc/alembic.ini:ro
-      - ./config/rucio/idpsecrets.json:/opt/rucio/etc/idpsecrets.json:ro
-      - ./certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
-      - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
-      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
-      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/rucio_ca.pem:ro
-      - ./certs/hostcert_with_key.pem:/etc/grid-security/hostcert_with_key.pem:ro
-      - ./scripts:/scripts:ro
-      - ./patches/rucio/fts3.py:/usr/local/lib/python3.9/site-packages/rucio/transfertool/fts3.py:ro
-      - ./patches/rucio/constants.py:/usr/local/lib/python3.9/site-packages/rucio/common/constants.py:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/rucio/oidc-server.cfg:/opt/rucio/etc/rucio.cfg:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/rucio/alembic-oidc.ini:/opt/rucio/etc/alembic.ini:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/rucio/idpsecrets.json:/opt/rucio/etc/idpsecrets.json:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/rucio_ca.pem:/etc/grid-security/certificates/rucio_ca.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/hostcert_with_key.pem:/etc/grid-security/hostcert_with_key.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/scripts:/scripts:ro
+      - ${TESTBED_HOST_SOURCE:-.}/patches/rucio/fts3.py:/usr/local/lib/python3.9/site-packages/rucio/transfertool/fts3.py:ro
+      - ${TESTBED_HOST_SOURCE:-.}/patches/rucio/constants.py:/usr/local/lib/python3.9/site-packages/rucio/common/constants.py:ro
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost/ping"]
       interval: 10s
@@ -550,13 +550,13 @@ services:
       - RUCIO_CFG_CLIENT_ACCOUNT=root
       - REQUESTS_CA_BUNDLE=/etc/grid-security/certificates/rucio_ca.pem
     volumes:
-      - ./certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
-      - ./certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
-      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
-      - ./certs/rucio_ca.pem:/etc/grid-security/certificates/rucio_ca.pem:ro
-      - ./config/rucio/userpass-client.cfg:/opt/rucio/etc/userpass-client.cfg:ro
-      - ./config/rucio/userpass-client-for-rucio-oidc.cfg:/opt/rucio/etc/userpass-client-for-rucio-oidc.cfg:ro
-      - ./scripts:/scripts:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE:-.}/certs/rucio_ca.pem:/etc/grid-security/certificates/rucio_ca.pem:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/rucio/userpass-client.cfg:/opt/rucio/etc/userpass-client.cfg:ro
+      - ${TESTBED_HOST_SOURCE:-.}/config/rucio/userpass-client-for-rucio-oidc.cfg:/opt/rucio/etc/userpass-client-for-rucio-oidc.cfg:ro
+      - ${TESTBED_HOST_SOURCE:-.}/scripts:/scripts:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     command: ["/bin/bash", "-c", "while true; do sleep 60; done"]
 
