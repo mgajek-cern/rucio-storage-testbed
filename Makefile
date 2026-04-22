@@ -109,10 +109,9 @@ lint: ## Run pre-commit hooks on all files
 clean: ## Remove generated certs and volumes; keep CA (rucio_ca.pem + key)
 	$(COMPOSE) down -v --remove-orphans 2>/dev/null || true
 	@# Preserve the CA so we don't have to re-trust it on every iteration.
-	@# find is safer than shell globs here because it handles the
-	@# "no matching files" case cleanly and lets us express "*.pem
-	@# except rucio_ca.pem and rucio_ca.key.pem" as a single predicate.
-	find certs -maxdepth 1 -type f -name '*.pem' \
+	@# We group the patterns with -o (OR) and \( \) to apply the ! -name (NOT) logic to all of them.
+	find certs -maxdepth 1 -type f \
+		\( -name '*.pem' -o -name '*.namespaces' -o -name '*.signing_policy' \) \
 		! -name 'rucio_ca.pem' \
 		! -name 'rucio_ca.key.pem' \
 		-delete 2>/dev/null || true
