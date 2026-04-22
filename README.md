@@ -91,12 +91,12 @@ sequenceDiagram
 
 | Protocol / Target | Auth Model | Execution Command |
 | :--- | :--- | :--- |
-| **XRootD TPC** | GSI Proxy | `docker exec -it rucio-storage-testbed-fts-1 python3 /scripts/test-fts-with-xrootd.py` |
+| **Rucio E2E** | Hybrid (Userpass + GSI + OIDC) | `./scripts/test-rucio-transfers.sh` |
+| **XRootD TPC** | X.509 GSI | `docker exec -it rucio-storage-testbed-fts-1 python3 /scripts/test-fts-with-xrootd.py` |
 | **S3 / MinIO** | Signed URLs | `./scripts/test-fts-with-s3.sh` |
-| **WebDAV** | GSI Proxy | `./scripts/test-fts-with-webdav.sh` |
+| **WebDAV** | X.509 GSI | `./scripts/test-fts-with-webdav.sh` |
 | **StoRM WebDAV** | OIDC Token | `./scripts/test-fts-with-storm-webdav.sh` |
-| **XRootD TPC** | SciTokens | `./scripts/test-fts-with-xrootd-scitokens.sh` |
-| **Rucio E2E** | Multi-auth | `./scripts/test-rucio-transfers.sh` |
+| **XRootD TPC** | OIDC Token | `./scripts/test-fts-with-xrootd-scitokens.sh` |
 
 ## Documentation
 
