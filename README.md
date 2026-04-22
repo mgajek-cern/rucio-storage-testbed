@@ -13,7 +13,7 @@ Multi-architecture Rucio + FTS3 integration testbed with XRootD, WebDAV, S3, Sto
 - **One-Command Topology Bootstrap:** Automated setup of the entire Rucio topology, distances and OIDC identity providers in one command.
 - **Resilient Test Suite:** Built-in validation of Rucio rule states, lock counts and Adler32 checksum streaming for minimal storage images.
 
-> Future work includes Dev Container integration, K8s migration, failure injection and federation. See [ROADMAP.md](./ROADMAP.md).
+> Future work includes Dev Container integration, K8s migration and failure injection. See [ROADMAP.md](./ROADMAP.md).
 
 ## Quick start
 
@@ -51,7 +51,7 @@ sequenceDiagram
     User->>KC: Login (Get JWT)
     User->>RS: Add Rule + JWT
 
-    Note over RS: Conveyor identifies need for transfer
+    NOTE over RS: Conveyor identifies need for transfer
     RS->>KC: Refresh User Token (or Fetch Service Token)
     KC-->>RS: Valid Bearer Token
 
@@ -61,7 +61,7 @@ sequenceDiagram
     SE-->>FTS: Transfer Started
 ```
 
-**Note on Test Implementation:** In the [test-rucio-transfers.sh](./scripts/test-rucio-transfers.sh) script, we trigger the rule creation using `USERPASS` authentication to avoid the manual browser redirects required by a full OIDC login. Once the rule exists, the Rucio Conveyor daemons internally handle the OIDC token orchestration, fetching the necessary bearer tokens from Keycloak to submit the transfer job to FTS automatically.
+**NOTE:** In the [test-rucio-transfers.sh](./scripts/test-rucio-transfers.sh) script, we trigger the rule creation using `USERPASS` authentication to avoid the manual browser redirects required by a full OIDC login. Once the rule exists, the Rucio Conveyor daemons internally handle the OIDC token orchestration, fetching the necessary bearer tokens from Keycloak to submit the transfer job to FTS automatically.
 
 ### X.509 GSI Flow (Legacy/Standard)
 
@@ -85,7 +85,7 @@ sequenceDiagram
     SE-->>FTS: Transfer Started
 ```
 
-**Note on Test Implementation:** Similar to the OIDC flow, the test script uses `USERPASS` for the initial rule submission to simplify the CLI interaction. The backend Rucio Conveyor daemons are configured with host/service X.509 certificates to authenticate with FTS, which then uses delegated proxies to authorize the third-party copy (TPC) at the storage level.
+**NOTE:** Similar to the OIDC flow, the test script uses `USERPASS` for the initial rule submission to simplify the CLI interaction. The backend Rucio Conveyor daemons are configured with host/service X.509 certificates to authenticate with FTS, which then uses delegated proxies to authorize the third-party copy (TPC) at the storage level.
 
 ## Tests
 
@@ -97,6 +97,8 @@ sequenceDiagram
 | **WebDAV** | X.509 GSI | `./scripts/test-fts-with-webdav.sh` |
 | **StoRM WebDAV** | OIDC Token | `./scripts/test-fts-with-storm-webdav.sh` |
 | **XRootD TPC** | OIDC Token | `./scripts/test-fts-with-xrootd-scitokens.sh` |
+
+**NOTE:** The Rucio E2E tests validate the Manual Registration pattern (view [the user workflows document](./docs/user-workflows.md)), where files are seeded directly onto storage before being registered in the Rucio catalog.
 
 ## Documentation
 
