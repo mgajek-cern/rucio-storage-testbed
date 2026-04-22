@@ -3,16 +3,16 @@
 set -euo pipefail
 
 # ── Topology ──────────────────────────────────────────────────────────────────
-CLIENT=rucio-storage-testbed-rucio-client-1
-RUCIO=rucio-storage-testbed-rucio-1
-RUCIO_OIDC=rucio-storage-testbed-rucio-oidc-1
-XRD1=rucio-storage-testbed-xrd1-1
-XRD2=rucio-storage-testbed-xrd2-1
-XRD3=rucio-storage-testbed-xrd3-1
-XRD4=rucio-storage-testbed-xrd4-1
-STORM1=rucio-storage-testbed-storm1-1
-STORM2=rucio-storage-testbed-storm2-1
-FTS=rucio-storage-testbed-fts-1
+CLIENT=compose-rucio-client-1
+RUCIO=compose-rucio-1
+RUCIO_OIDC=compose-rucio-oidc-1
+XRD1=compose-xrd1-1
+XRD2=compose-xrd2-1
+XRD3=compose-xrd3-1
+XRD4=compose-xrd4-1
+STORM1=compose-storm1-1
+STORM2=compose-storm2-1
+FTS=compose-fts-1
 
 # ── Auth & Daemon Helpers ─────────────────────────────────────────────────────
 

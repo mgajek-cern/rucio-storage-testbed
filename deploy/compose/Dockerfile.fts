@@ -115,13 +115,13 @@ RUN touch /var/log/fts3/fts3server.log && \
     touch /var/log/fts3rest/fts3rest.log && \
     chown -R fts3:fts3 /var/log/fts3rest
 
-COPY config/fts/fts3config /etc/fts3/fts3config
-COPY config/fts/fts3rest.conf /etc/httpd/conf.d/fts3rest.conf
-COPY config/fts/fts3restconfig /etc/fts3/fts3restconfig
-COPY config/fts/fts-activemq.conf /etc/fts3/fts-activemq.conf
-COPY scripts/fts/wait-for-it.sh /usr/local/bin/wait-for-it.sh
-COPY scripts/fts/docker-entrypoint.sh /docker-entrypoint.sh
-COPY scripts/fts/logshow /usr/local/bin/logshow
+COPY shared/config/fts/fts3config /etc/fts3/fts3config
+COPY shared/config/fts/fts3rest.conf /etc/httpd/conf.d/fts3rest.conf
+COPY shared/config/fts/fts3restconfig /etc/fts3/fts3restconfig
+COPY shared/config/fts/fts-activemq.conf /etc/fts3/fts-activemq.conf
+COPY shared/scripts/fts/wait-for-it.sh /usr/local/bin/wait-for-it.sh
+COPY shared/scripts/fts/docker-entrypoint.sh /docker-entrypoint.sh
+COPY shared/scripts/fts/logshow /usr/local/bin/logshow
 RUN chmod +x /usr/local/bin/wait-for-it.sh \
              /usr/local/bin/logshow \
              /docker-entrypoint.sh

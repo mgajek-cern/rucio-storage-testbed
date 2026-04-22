@@ -3,10 +3,17 @@
 set -euo pipefail
 
 # ── Global Config ───────────────────────────────────────────────────────────
-RUCIO="rucio-storage-testbed-rucio-1"
-RUCIO_OIDC="rucio-storage-testbed-rucio-oidc-1"
+RUCIO="compose-rucio-1"
+RUCIO_OIDC="compose-rucio-oidc-1"
 FTS="https://fts:8446"
 FTS_OIDC="https://fts-oidc:8446"
+
+# Get the directory where the script lives, then go up to find the compose file
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Find which compose file to use (default to .yml, fallback to .ci.yml)
+COMPOSE_FILE="$PROJECT_ROOT/deploy/compose/docker-compose.yml"
 
 ra()      { docker exec "$RUCIO"      rucio-admin -S userpass -u ddmlab --password secret "$@"; }
 ra_oidc() { docker exec "$RUCIO_OIDC" rucio-admin -S userpass -u ddmlab --password secret "$@"; }
@@ -32,11 +39,13 @@ wait_for_infrastructure() {
 restart_storm_nodes() {
     local label=$1
     echo "=== Restarting StoRM ($label) ==="
-    docker compose restart storm1 storm2
+
+    docker compose -f "$COMPOSE_FILE" restart storm1 storm2
+
     echo "  Waiting for StoRM health checks..."
     for i in $(seq 1 20); do
-        s1=$(docker inspect --format='{{.State.Health.Status}}' rucio-storage-testbed-storm1-1 2>/dev/null || echo "unknown")
-        s2=$(docker inspect --format='{{.State.Health.Status}}' rucio-storage-testbed-storm2-1 2>/dev/null || echo "unknown")
+        s1=$(docker inspect --format='{{.State.Health.Status}}' compose-storm1-1 2>/dev/null || echo "unknown")
+        s2=$(docker inspect --format='{{.State.Health.Status}}' compose-storm2-1 2>/dev/null || echo "unknown")
         if [[ "$s1" == "healthy" && "$s2" == "healthy" ]]; then
             echo "  ✓ All StoRM nodes healthy"
             return 0
@@ -186,16 +195,16 @@ configure_rses() {
 
 setup_fts_oidc_provider() {
     echo "=== Registering Keycloak in FTS Database ==="
-    docker exec rucio-storage-testbed-ftsdb-oidc-1 mysql -ufts -pfts fts -e "
+    docker exec compose-ftsdb-oidc-1 mysql -ufts -pfts fts -e "
     INSERT IGNORE INTO t_token_provider (name, issuer, client_id, client_secret)
     VALUES
       ('keycloak-rucio',       'https://keycloak:8443/realms/rucio',  'rucio-oidc', 'rucio-oidc-secret'),
       ('keycloak-rucio-slash', 'https://keycloak:8443/realms/rucio/', 'rucio-oidc', 'rucio-oidc-secret');"
 
     echo "  Restarting fts-oidc..."
-    docker compose restart fts-oidc
+    docker compose -f "$COMPOSE_FILE" restart fts-oidc
     for i in $(seq 1 30); do
-        code=$(docker exec rucio-storage-testbed-fts-oidc-1 curl -sk -o /dev/null -w '%{http_code}' https://localhost:8446/whoami 2>/dev/null) || code=0
+        code=$(docker exec compose-fts-oidc-1 curl -sk -o /dev/null -w '%{http_code}' https://localhost:8446/whoami 2>/dev/null) || code=0
         [[ "$code" == "200" || "$code" == "403" ]] && { echo "  ✓ fts-oidc ready"; break; }
         sleep 5
     done
@@ -204,7 +213,7 @@ setup_fts_oidc_provider() {
 delegate_gsi_proxies() {
     echo "=== Delegating GSI proxies to FTS ==="
     for url in "$FTS" "$FTS_OIDC"; do
-        docker exec rucio-storage-testbed-fts-1 python3 -c "
+        docker exec compose-fts-1 python3 -c "
 import datetime, fts3.rest.client.easy as fts3
 ctx = fts3.Context('$url', ucert='/etc/grid-security/hostcert.pem', ukey='/etc/grid-security/hostkey.pem', verify=False)
 fts3.delegate(ctx, lifetime=datetime.timedelta(hours=48), force=True)

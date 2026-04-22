@@ -12,13 +12,15 @@ on:
       compose_file:
         required: false
         type: string
-        default: docker-compose.ci.yml
+        default: deploy/compose/docker-compose.ci.yml
 
 jobs:
   test:
     runs-on: ${{ inputs.runner }}
     name: ${{ inputs.label }}
     timeout-minutes: 45
+    env:
+      TESTBED_HOST_SOURCE: ${{ github.workspace }}
 
     steps:
       - name: Checkout
@@ -30,7 +32,7 @@ jobs:
           platforms: amd64
 
       - name: Generate certificates
-        run: ./scripts/generate-certs.sh
+        run: make certs
 
       - name: Start stack
         run: docker compose -f ${{ inputs.compose_file }} up -d
@@ -39,7 +41,7 @@ jobs:
         run: |
           # Wait for storm containers to be running (arm64 QEMU emulation is slow).
           # If still exited after timeout, dump logs to diagnose crash.
-          for c in rucio-storage-testbed-storm1-1 rucio-storage-testbed-storm2-1; do
+          for c in compose-storm1-1 compose-storm2-1; do
             echo "  Waiting for $c to be running..."
             for i in $(seq 1 36); do
               state=$(docker inspect --format='{{.State.Status}}' "$c" 2>/dev/null) || state="not_found"
@@ -97,7 +99,7 @@ jobs:
           docker compose -f ${{ inputs.compose_file }} logs keycloak; exit 1
 
       - name: Bootstrap Rucio (seeds RSEs + token provider + restarts storm/fts-oidc)
-        run: ./scripts/bootstrap-testbed.sh
+        run: make bootstrap
 
       - name: Wait for fts-oidc
         run: |
@@ -112,7 +114,7 @@ jobs:
       - name: fts-oidc OIDC token auth check
         run: |
           # Fetch token from inside fts-oidc container (iss matches registered issuer)
-          TOKEN=$(docker exec rucio-storage-testbed-fts-oidc-1 curl -sk \
+          TOKEN=$(docker exec compose-fts-oidc-1 curl -sk \
             -u "rucio-oidc:rucio-oidc-secret" \
             -d "grant_type=password&username=randomaccount&password=secret" \
             https://keycloak:8443/realms/rucio/protocol/openid-connect/token \
@@ -129,29 +131,25 @@ jobs:
           echo "fts-oidc OIDC auth OK (method=$METHOD)"
 
       - name: XRootD TPC test
-        run: |
-          docker exec rucio-storage-testbed-fts-1 bash -c \
-            'FTS=https://fts:8446 python3 /scripts/test-fts-with-xrootd.py'
+        run: make test-xrootd-gsi
 
       - name: S3 / MinIO test
-        run: ./scripts/test-fts-with-s3.sh
+        run: make test-s3
 
       - name: WebDAV test
-        run: ./scripts/test-fts-with-webdav.sh
+        run: make test-webdav
 
       - name: StoRM WebDAV HTTP TPC test (OIDC token, no GSI)
-        run: ./scripts/test-fts-with-storm-webdav.sh
+        run: make test-storm
 
       - name: XRootD TPC test (OIDC token, no GSI)
-        run: ./scripts/test-fts-with-xrootd-scitokens.sh
+        run: make test-xrootd-oidc
 
       - name: Rucio E2E transfer test
-        run: ./scripts/test-rucio-transfers.sh
+        run: make test-rucio
 
       - name: Rucio E2E transfer test (Python)
-        run: |
-          docker exec rucio-storage-testbed-rucio-client-1 \
-            python3 /scripts/test-rucio-transfers.py
+        run: make test-rucio-python
 
       - name: Dump logs on failure
         if: failure()

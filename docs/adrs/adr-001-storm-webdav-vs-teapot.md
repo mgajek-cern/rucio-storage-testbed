@@ -47,9 +47,9 @@ Chosen option: **Keep direct StoRM WebDAV and document the Teapot migration path
 
 Compliance with this decision is confirmed by:
 
-* `./scripts/test-fts-with-storm-webdav.sh` passes (direct FTS-OIDC → StoRM TPC)
-* `./scripts/test-rucio-transfers.sh` with `run_storm_oidc_transfer_test` passes (Rucio conveyor → FTS-OIDC → StoRM TPC)
-* `docker-compose.yml` contains only `storm1` and `storm2`, no `teapot` service
+* `./shared/scripts/test-fts-with-storm-webdav.sh` passes (direct FTS-OIDC → StoRM TPC)
+* `./shared/scripts/test-rucio-transfers.sh` with `run_storm_oidc_transfer_test` passes (Rucio conveyor → FTS-OIDC → StoRM TPC)
+* `deploy/compose/docker-compose.yml` contains only `storm1` and `storm2`, no `teapot` service
 * `t_file.src_token_id` and `t_file.dst_token_id` are populated for conveyor-submitted transfers (proves OIDC tokens are attached per file)
 * Rule state transitions to `OK` with `Locks OK/REPLICATING/STUCK: 1/0/0` for STORM1 → STORM2 replication rules
 

@@ -10,13 +10,13 @@ jobs:
       matrix:
         include:
           - name: fts
-            file: ./Dockerfile.fts
+            file: ./deploy/compose/Dockerfile.fts
             image: test-fts
           - name: xrd-scitokens
-            file: ./Dockerfile.xrd-scitokens
+            file: ./deploy/compose/Dockerfile.xrd-scitokens
             image: test-xrd-scitokens
           - name: rucio-client-dind
-            file: ./Dockerfile.rucio-client-dind
+            file: ./deploy/compose/Dockerfile.rucio-client-dind
             image: rucio-client-dind
     steps:
       - name: Checkout

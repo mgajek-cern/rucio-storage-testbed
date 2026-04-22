@@ -58,7 +58,7 @@ delegate() {
   fts_curl "$FTS/delegation/$dlg_id/request" > /tmp/delegation.csr
 
   local fts_container
-  fts_container=$(docker ps --filter "name=rucio-storage-testbed-fts" --format "{{.Names}}" | head -1)
+  fts_container=$(docker ps --filter "name=compose-fts" --format "{{.Names}}" | head -1)
 
   docker cp /tmp/delegation.csr "$fts_container":/tmp/delegation.csr
   docker cp "$CERT"              "$fts_container":/tmp/usercert.pem
@@ -90,7 +90,7 @@ delegate() {
 # since rucio_ca.pem is not in the FTS system trust store.
 echo "=== Waiting for WebDAV ==="
 for i in $(seq 1 20); do
-  code=$(docker exec rucio-storage-testbed-fts-1 \
+  code=$(docker exec compose-fts-1 \
     curl -sk \
       --capath /etc/grid-security/certificates/ \
       --cert /etc/grid-security/hostcert.pem \
@@ -108,7 +108,7 @@ echo "=== Verifying WebDAV endpoint ==="
 # PROPFIND requires Depth header; 207 Multi-Status is the correct WebDAV response.
 # Run from FTS container to avoid host-side CN mismatch on the server cert.
 http_check "PROPFIND /" \
-  "$(docker exec rucio-storage-testbed-fts-1 \
+  "$(docker exec compose-fts-1 \
     curl -sk \
       --capath /etc/grid-security/certificates/ \
       --cert /etc/grid-security/hostcert.pem \
@@ -125,10 +125,10 @@ echo ""
 # ── Seed test data ───────────────────────────────────────────────────────────
 # Seed xrd1 and webdav1 directly so this script runs independently of other tests.
 echo "=== Seeding test files ==="
-docker exec rucio-storage-testbed-xrd1-1 bash -c   'echo "fts-test" > /rucio/fts-test-file && chown xrootd:xrootd /rucio/fts-test-file'
+docker exec compose-xrd1-1 bash -c   'echo "fts-test" > /rucio/fts-test-file && chown xrootd:xrootd /rucio/fts-test-file'
 echo "  xrd1 seeded"
 
-seed_code=$(docker exec rucio-storage-testbed-fts-1   curl -sk     --capath /etc/grid-security/certificates/     --cert /etc/grid-security/hostcert.pem     --key  /etc/grid-security/hostkey.pem     -X PUT https://webdav1/fts-test-file-from-xrd1     --data-binary "fts-test"     -o /dev/null -w '%{http_code}')
+seed_code=$(docker exec compose-fts-1   curl -sk     --capath /etc/grid-security/certificates/     --cert /etc/grid-security/hostcert.pem     --key  /etc/grid-security/hostkey.pem     -X PUT https://webdav1/fts-test-file-from-xrd1     --data-binary "fts-test"     -o /dev/null -w '%{http_code}')
 echo "  webdav1 seed PUT: HTTP $seed_code"
 [[ "$seed_code" =~ ^2 ]] || { echo "✗ seed failed (HTTP $seed_code)"; exit 1; }
 
@@ -166,7 +166,7 @@ poll_job "$JOB"
 
 echo ""
 echo "--- WebDAV1 directory listing ---"
-docker exec rucio-storage-testbed-fts-1 \
+docker exec compose-fts-1 \
   curl -sk \
     --capath /etc/grid-security/certificates/ \
     --cert /etc/grid-security/hostcert.pem \
@@ -176,7 +176,7 @@ docker exec rucio-storage-testbed-fts-1 \
 
 echo ""
 echo "--- xrd2 received file ---"
-docker exec rucio-storage-testbed-xrd2-1 ls -la /rucio/fts-test-file-from-webdav
+docker exec compose-xrd2-1 ls -la /rucio/fts-test-file-from-webdav
 
 echo ""
 echo "All smoke tests done."

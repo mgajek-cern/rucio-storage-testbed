@@ -99,7 +99,7 @@ delegate() {
 
   # Sign inside the FTS container — macOS LibreSSL ignores -subj on x509 -req
   local fts_container
-  fts_container=$(docker ps --filter "name=rucio-storage-testbed-fts" --format "{{.Names}}" | head -1)
+  fts_container=$(docker ps --filter "name=compose-fts" --format "{{.Names}}" | head -1)
 
   docker cp /tmp/delegation.csr "$fts_container":/tmp/delegation.csr
   docker cp "$CERT"              "$fts_container":/tmp/usercert.pem
@@ -142,11 +142,11 @@ run_transfers() {
 
 verify_results() {
   echo -e "\n--- MinIO1 bucket contents ---"
-  docker exec rucio-storage-testbed-minio1-1 bash -c \
+  docker exec compose-minio1-1 bash -c \
     "mc alias set local http://localhost:9000 minioadmin minioadmin --quiet && mc ls local/fts-test/"
 
   echo -e "\n--- MinIO2 bucket contents ---"
-  docker exec rucio-storage-testbed-minio2-1 bash -c \
+  docker exec compose-minio2-1 bash -c \
     "mc alias set local http://localhost:9000 minioadmin minioadmin --quiet && mc ls local/fts-test/"
 }
 

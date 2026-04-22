@@ -5,9 +5,9 @@ set -euo pipefail
 # ── Global Config ───────────────────────────────────────────────────────────
 FTS="https://localhost:8447"
 CACERT=./certs/rucio_ca.pem
-FTS_OIDC_CONTAINER=rucio-storage-testbed-fts-oidc-1
-XRD3=rucio-storage-testbed-xrd3-1
-XRD4=rucio-storage-testbed-xrd4-1
+FTS_OIDC_CONTAINER=compose-fts-oidc-1
+XRD3=compose-xrd3-1
+XRD4=compose-xrd4-1
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 

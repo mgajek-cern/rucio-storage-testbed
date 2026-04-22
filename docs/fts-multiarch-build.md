@@ -16,18 +16,20 @@ Images are built via `.github/workflows/build-images.yml` using a build matrix.
 
 ```bash
 # Current platform only (fast)
-docker build -t test-fts:local -f Dockerfile.fts .
+docker build -t test-fts:local -f deploy/compose/Dockerfile.fts .
 
 # Multi-arch (requires buildx)
 docker buildx create --use
 docker buildx build --platform linux/amd64,linux/arm64 \
-    -t test-fts:local \
-    -f Dockerfile.fts .
+    -t test-fts:local -f deploy/compose/Dockerfile.fts .
 
 # Example for XRootD SciTokens
 docker buildx build --platform linux/amd64,linux/arm64 \
-  -t test-xrd-scitokens:local \
-  -f Dockerfile.xrd-scitokens .
+    -t test-xrd-scitokens:local -f deploy/compose/Dockerfile.xrd-scitokens .
+
+# Example for Rucio Clients with DinD
+docker buildx build --platform linux/amd64,linux/arm64 \
+    -t rucio-client-dind:local -f deploy/compose/Dockerfile.xrd-scitokens .
 ```
 
 ## Known issues on macOS (Apple Silicon)

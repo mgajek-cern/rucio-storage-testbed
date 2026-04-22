@@ -12,7 +12,7 @@ jobs:
     with:
       runner: ubuntu-latest
       label: amd64
-      compose_file: docker-compose.ci.yml
+      compose_file: deploy/compose/docker-compose.ci.yml
 
   test-arm64:
     uses: ./.github/workflows/_run-integration-tests.yml
@@ -20,4 +20,4 @@ jobs:
       # ubuntu-24.04-arm: GitHub-hosted arm64 Linux runner, Docker + QEMU pre-installed
       runner: ubuntu-24.04-arm
       label: arm64
-      compose_file: docker-compose.ci.yml
+      compose_file: deploy/compose/docker-compose.ci.yml

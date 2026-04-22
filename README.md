@@ -19,16 +19,51 @@ Multi-architecture Rucio + FTS3 integration testbed with XRootD, WebDAV, S3, Sto
 
 ```bash
 # 1. Generate certificates (includes StoRM trust anchors and JVM cacerts)
-./scripts/generate-certs.sh
+make certs
 
 # 2. Start the stack
-docker compose up -d
+make compose-up
 
 # 3. Bootstrap Rucio (accounts, RSEs, OIDC identities, token providers)
-./scripts/bootstrap-testbed.sh
+make bootstrap
 
 # 4. Run transfer tests
-./scripts/test-rucio-transfers.sh
+make test-rucio
+```
+
+## Make targets
+
+```bash
+make help
+  help                   Show this help (default target)
+
+Setup
+  certs                  Generate all certificates (CA, hosts, StoRM trust anchors, JVM cacerts)
+
+Stack lifecycle (compose-*)
+  compose-up             Start the full stack in the background
+  compose-down           Stop the stack and remove volumes
+  compose-restart        Tear down and restart the stack
+  compose-ps             List running containers
+  compose-logs           Tail logs from all services (Ctrl-C to exit)
+  compose-build          Build local Docker images (fts, xrd-scitokens, rucio-client-dind)
+  bootstrap              Bootstrap Rucio (accounts, RSEs, OIDC identities, token providers)
+
+Tests
+  test-rucio             Rucio E2E transfer test (bash version)
+  test-rucio-python      Rucio E2E transfer test (Python, runs in rucio-client container)
+  test-xrootd-gsi        XRootD TPC test with X.509 GSI
+  test-xrootd-oidc       XRootD TPC test with OIDC tokens (SciTokens)
+  test-storm             StoRM WebDAV TPC test with OIDC tokens
+  test-webdav            WebDAV TPC test with X.509 GSI
+  test-s3                S3/MinIO test with signed URLs
+  test-all               Run every test sequentially
+
+Development
+  lint                   Run pre-commit hooks on all files
+
+Cleanup
+  clean                  Remove certs and volumes (stack must be down first)
 ```
 
 ## High Level Flow
@@ -61,7 +96,7 @@ sequenceDiagram
     SE-->>FTS: Transfer Started
 ```
 
-**NOTE:** In the [test-rucio-transfers.sh](./scripts/test-rucio-transfers.sh) script, we trigger the rule creation using `USERPASS` authentication to avoid the manual browser redirects required by a full OIDC login. Once the rule exists, the Rucio Conveyor daemons internally handle the OIDC token orchestration, fetching the necessary bearer tokens from Keycloak to submit the transfer job to FTS automatically.
+**NOTE:** In the [test-rucio-transfers.sh](./shared/scripts/test-rucio-transfers.sh) script, we trigger the rule creation using `USERPASS` authentication to avoid the manual browser redirects required by a full OIDC login. Once the rule exists, the Rucio Conveyor daemons internally handle the OIDC token orchestration, fetching the necessary bearer tokens from Keycloak to submit the transfer job to FTS automatically.
 
 ### X.509 GSI Flow (Legacy/Standard)
 
@@ -91,12 +126,12 @@ sequenceDiagram
 
 | Protocol / Target | Auth Model | Execution Command |
 | :--- | :--- | :--- |
-| **Rucio E2E** | Hybrid (Userpass + GSI + OIDC) | `./scripts/test-rucio-transfers.sh` |
-| **XRootD TPC** | X.509 GSI | `docker exec -it rucio-storage-testbed-fts-1 python3 /scripts/test-fts-with-xrootd.py` |
-| **S3 / MinIO** | Signed URLs | `./scripts/test-fts-with-s3.sh` |
-| **WebDAV** | X.509 GSI | `./scripts/test-fts-with-webdav.sh` |
-| **StoRM WebDAV** | OIDC Token | `./scripts/test-fts-with-storm-webdav.sh` |
-| **XRootD TPC** | OIDC Token | `./scripts/test-fts-with-xrootd-scitokens.sh` |
+| **Rucio E2E** | Hybrid (Userpass + GSI + OIDC) | `./shared/scripts/test-rucio-transfers.sh` |
+| **XRootD TPC** | X.509 GSI | `docker exec -it compose-fts-1 python3 /scripts/test-fts-with-xrootd.py` |
+| **S3 / MinIO** | Signed URLs | `./shared/scripts/test-fts-with-s3.sh` |
+| **WebDAV** | X.509 GSI | `./shared/scripts/test-fts-with-webdav.sh` |
+| **StoRM WebDAV** | OIDC Token | `./shared/scripts/test-fts-with-storm-webdav.sh` |
+| **XRootD TPC** | OIDC Token | `./shared/scripts/test-fts-with-xrootd-scitokens.sh` |
 
 **NOTE:** The Rucio E2E tests validate the Manual Registration pattern (view [the user workflows document](./docs/user-workflows.md)), where files are seeded directly onto storage before being registered in the Rucio catalog.
 

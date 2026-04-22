@@ -44,14 +44,24 @@ install_kind() {
 install_chart_testing() {
     local CT_VERSION="v3.13.0"
     echo -e "${BLUE}Installing chart-testing $CT_VERSION...${NC}"
-    curl -Lo ct.tar.gz "https://github.com/helm/chart-testing/releases/download/$CT_VERSION/chart-testing_${CT_VERSION#v}_linux_${ARCH}.tar.gz"
-    tar -xzf ct.tar.gz
-    chmod +x ct
-    sudo mv ct /usr/local/bin/ct
-    rm -rf ct.tar.gz etc/
+
+    local tmp
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' RETURN
+
+    curl -sSL -o "$tmp/ct.tar.gz" \
+        "https://github.com/helm/chart-testing/releases/download/$CT_VERSION/chart-testing_${CT_VERSION#v}_linux_${ARCH}.tar.gz"
+
+    # Extract into the tmp dir — the tarball ships with a top-level
+    # README.md, LICENSE, and etc/ that would clobber the repo's own
+    # files if extracted into the current directory.
+    tar -xzf "$tmp/ct.tar.gz" -C "$tmp"
+
+    sudo install -m 0755 "$tmp/ct" /usr/local/bin/ct
 
     echo -e "${BLUE}Installing Python dependencies...${NC}"
     pip install yamllint==1.37.1
+
     echo -e "${GREEN}Chart-testing installed${NC}\n"
 }
 
@@ -88,6 +98,6 @@ echo -e "${BLUE}╚════════════════════�
 
 check_requirements
 install_kind
-# install_chart_testing
+install_chart_testing
 generate_configs
 print_summary
