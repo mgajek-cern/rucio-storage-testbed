@@ -524,9 +524,7 @@ services:
       retries: 20
 
   rucio-client:
-    build:
-      context: .
-      dockerfile: Dockerfile.rucio-client-dind
+    image: mgajekcern/rucio-client-dind:latest
     hostname: rucio-client
     depends_on:
       rucio:
@@ -549,6 +547,7 @@ services:
       - ./config/rucio/userpass-client.cfg:/opt/rucio/etc/userpass-client.cfg:ro
       - ./config/rucio/userpass-client-for-rucio-oidc.cfg:/opt/rucio/etc/userpass-client-for-rucio-oidc.cfg:ro
       - ./scripts:/scripts:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     command: ["/bin/bash", "-c", "while true; do sleep 60; done"]
 
 networks:
