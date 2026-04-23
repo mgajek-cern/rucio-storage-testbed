@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "storm-webdav.fullname" . }}
+  labels:
+    app: {{ include "storm-webdav.name" . }}
+    instance: {{ include "storm-webdav.fullname" . }}
+    release: {{ .Release.Name }}
+spec:
+  serviceName: {{ include "storm-webdav.fullname" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "storm-webdav.name" . }}
+      instance: {{ include "storm-webdav.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "storm-webdav.name" . }}
+        instance: {{ include "storm-webdav.fullname" . }}
+        release: {{ .Release.Name }}
+    spec:
+      hostname: {{ include "storm-webdav.fullname" . }}
+      containers:
+        - name: storm-webdav
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: STORM_WEBDAV_HOSTNAME_0
+              value: {{ include "storm-webdav.fullname" . | quote }}
+            - name: STORM_WEBDAV_HTTPS_PORT
+              value: "8443"
+            - name: STORM_WEBDAV_HTTP_PORT
+              value: "8085"
+            - name: STORM_WEBDAV_SA_CONFIG_DIR
+              value: /etc/storm/webdav/sa.d
+            - name: STORM_WEBDAV_CERTIFICATE_PATH
+              value: /etc/grid-security/hostcert.pem
+            - name: STORM_WEBDAV_PRIVATE_KEY_PATH
+              value: /etc/grid-security/hostkey.pem
+            - name: STORM_WEBDAV_TRUST_ANCHORS_DIR
+              value: /etc/grid-security/certificates
+            - name: STORM_WEBDAV_TRUST_ANCHORS_REFRESH_INTERVAL
+              value: "0"
+            - name: STORM_WEBDAV_REQUIRE_CLIENT_CERT
+              value: "false"
+            - name: STORM_WEBDAV_AUTHZ_SERVER_ENABLE
+              value: "true"
+            - name: STORM_WEBDAV_AUTHZ_SERVER_ISSUER
+              value: {{ .Values.authz.issuer | quote }}
+            - name: STORM_WEBDAV_AUTHZ_SERVER_SECRET
+              value: {{ .Values.authz.secret | quote }}
+            - name: STORM_WEBDAV_OAUTH_ISSUERS_REFRESH_PERIOD_MINUTES
+              value: "1"
+            - name: STORM_WEBDAV_JVM_OPTS
+              value: {{ .Values.jvmOpts | quote }}
+          ports:
+            - name: https
+              containerPort: 8443
+            - name: http
+              containerPort: 8085
+          volumeMounts:
+            - name: certs
+              mountPath: /etc/grid-security/hostcert.pem
+              subPath: {{ .Values.certFiles.hostcert }}
+              readOnly: true
+            - name: certs
+              mountPath: /etc/grid-security/hostkey.pem
+              subPath: {{ .Values.certFiles.hostkey }}
+              readOnly: true
+            - name: trust
+              mountPath: /etc/grid-security/certificates
+              readOnly: true
+            - name: cacerts
+              mountPath: /opt/java/openjdk/lib/security/cacerts
+              subPath: storm-cacerts
+              readOnly: true
+            - name: configs
+              mountPath: /app/application-issuers.yml
+              subPath: storm-application-issuers.yml
+              readOnly: true
+            - name: configs
+              mountPath: /app/application-policies.yml
+              subPath: storm-application-policies.yml
+              readOnly: true
+            - name: configs
+              mountPath: /etc/storm/webdav/sa.d/data.properties
+              subPath: data.properties
+              readOnly: true
+            - name: configs
+              mountPath: /etc/storm/webdav/logback-access.xml
+              subPath: logback-access.xml
+              readOnly: true
+            - name: data
+              mountPath: /storage/data
+          readinessProbe:
+            httpGet:
+              path: /.storm-webdav/actuator/health
+              port: http
+            initialDelaySeconds: 90
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 20
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: certs
+          secret:
+            secretName: {{ .Values.certsSecret }}
+        - name: trust
+          secret:
+            secretName: {{ .Values.trustSecret }}
+            # The trust anchor files live under a trustanchors/ prefix in the
+            # umbrella-managed Secret; the secret itself exposes them flat.
+            items:
+              - key: rucio_ca.pem
+                path: 5fca1cb1.0
+              - key: rucio_ca.pem
+                path: rucio_ca.pem
+        - name: cacerts
+          secret:
+            secretName: {{ .Values.trustSecret }}
+        - name: configs
+          configMap:
+            name: {{ .Values.configsConfigMap }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.persistence.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}

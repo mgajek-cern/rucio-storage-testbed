@@ -1,0 +1,51 @@
+{{- if .Values.scripts.create }}
+{{- /*
+  Scripts are split into multiple ConfigMaps because (a) ConfigMap keys can't
+  contain "/", and (b) some filenames collide across directories
+  (e.g. fts/docker-entrypoint-oidc.sh vs xrootd/docker-entrypoint-oidc.sh).
+
+  Each per-directory ConfigMap is named "<base-configMapName>-<dir>" and its
+  keys are just the filenames within that directory. The top-level files
+  (bootstrap-testbed.sh, generate-certs.sh, the test-*.sh scripts…) go into
+  the base-named ConfigMap.
+
+  Consumers:
+    testbed-scripts        → rucio-server, rucio-client (mounted at /scripts)
+    testbed-scripts-fts    → fts-oidc entrypoint + related helpers
+    testbed-scripts-xrootd → xrd-scitokens entrypoint
+    testbed-scripts-rucio  → rucio bootstrap-db.py
+*/}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.scripts.configMapName }}
+  labels:
+    app.kubernetes.io/name: rucio-storage-testbed
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+data:
+  {{- range $path, $_ := .Files.Glob "files/scripts/*" }}
+    {{- /* Only top-level files in scripts/, not subdirectories */}}
+    {{- if not (regexMatch "^files/scripts/[^/]+/" $path) }}
+  {{ base $path }}: |-
+{{ $.Files.Get $path | indent 4 }}
+    {{- end }}
+  {{- end }}
+{{- range $dir := list "fts" "xrootd" "rucio" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $.Values.scripts.configMapName }}-{{ $dir }}
+  labels:
+    app.kubernetes.io/name: rucio-storage-testbed
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+data:
+  {{- range $path, $_ := $.Files.Glob (printf "files/scripts/%s/*" $dir) }}
+  {{ base $path }}: |-
+{{ $.Files.Get $path | indent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}

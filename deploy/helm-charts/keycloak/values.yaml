@@ -1,0 +1,28 @@
+image:
+  repository: quay.io/keycloak/keycloak
+  tag: "23.0.1"
+  pullPolicy: IfNotPresent
+
+fullnameOverride: keycloak
+
+service:
+  type: ClusterIP
+  ports:
+    http: 8080
+    https: 8443
+
+admin:
+  username: admin
+  password: admin
+
+# Shared artifacts from the umbrella chart:
+# - testbed-certs holds keycloakcert.pem / keycloakkey.pem
+# - testbed-configs holds realm.json
+certsSecret: testbed-certs
+configsConfigMap: testbed-configs
+
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

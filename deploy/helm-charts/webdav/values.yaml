@@ -1,0 +1,30 @@
+# Default values for the webdav chart.
+# Umbrella installs this twice (webdav1, webdav2). Each gets its own hostcert
+# pair mounted from the shared certs Secret via keyOverrides.
+
+image:
+  repository: rucio/test-webdav
+  tag: ""
+  digest: "sha256:e639fedfa65cbf7516bd52c0e0be1f028f6eb92552454e70ce39b67c10fe6a3a"
+  pullPolicy: IfNotPresent
+
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 443
+
+# Per-instance cert filenames inside the shared certs Secret.
+# The umbrella overrides these to webdav1cert.pem / webdav2cert.pem etc.
+certFiles:
+  hostcert: webdav1cert.pem
+  hostkey: webdav1key.pem
+  ca: rucio_ca.pem
+
+certsSecret: testbed-certs
+
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

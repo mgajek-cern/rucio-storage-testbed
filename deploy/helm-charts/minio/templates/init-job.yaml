@@ -1,0 +1,42 @@
+{{- if .Values.init.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "minio.fullname" . }}-init
+  labels:
+    app: {{ include "minio.name" . }}
+    instance: {{ include "minio.fullname" . }}
+    release: {{ .Release.Name }}
+  annotations:
+    # Re-run on every upgrade; MinIO's `mb --ignore-existing` is idempotent.
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app: {{ include "minio.name" . }}
+        instance: {{ include "minio.fullname" . }}
+        release: {{ .Release.Name }}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: {{ include "minio.mcImage" . | quote }}
+          imagePullPolicy: {{ .Values.mcImage.pullPolicy }}
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              # Wait for MinIO to be reachable. The readinessProbe on the
+              # StatefulSet handles pod-level readiness, but the Service may
+              # still be catching up on a cold start.
+              until mc alias set local http://{{ include "minio.fullname" . }}:{{ .Values.service.ports.api }} {{ .Values.credentials.rootUser }} {{ .Values.credentials.rootPassword }} >/dev/null 2>&1; do
+                echo "Waiting for MinIO..."; sleep 2
+              done
+              mc mb --ignore-existing local/{{ .Values.init.bucket }}
+              echo '{{ .Values.init.testContent }}' | mc pipe local/{{ .Values.init.bucket }}/{{ .Values.init.testFile }}
+              echo "{{ include "minio.fullname" . }} bucket ready"
+{{- end }}

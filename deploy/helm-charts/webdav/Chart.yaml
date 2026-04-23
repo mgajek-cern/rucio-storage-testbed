@@ -1,0 +1,10 @@
+apiVersion: v2
+name: webdav
+description: Apache-based WebDAV storage endpoint (rucio/test-webdav)
+type: application
+version: 0.1.0
+appVersion: "1"
+keywords:
+  - rucio
+  - webdav
+  - storage

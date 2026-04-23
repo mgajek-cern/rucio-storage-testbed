@@ -1,0 +1,10 @@
+apiVersion: v2
+name: xrootd
+description: XRootD server for the Rucio storage testbed (GSI / VOMS auth)
+type: application
+version: 0.1.0
+appVersion: "5"
+keywords:
+  - rucio
+  - xrootd
+  - storage

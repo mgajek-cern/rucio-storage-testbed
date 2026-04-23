@@ -1,0 +1,10 @@
+apiVersion: v2
+name: fts
+description: FTS3 server (File Transfer Service) — built from the testbed's custom Dockerfile.fts
+type: application
+version: 0.1.0
+appVersion: "3.13"
+keywords:
+  - rucio
+  - fts
+  - transfer

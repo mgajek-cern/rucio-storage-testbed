@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "xrootd.fullname" . }}
+  labels:
+    app: {{ include "xrootd.name" . }}
+    instance: {{ include "xrootd.fullname" . }}
+    release: {{ .Release.Name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "xrootd.name" . }}
+      instance: {{ include "xrootd.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "xrootd.name" . }}
+        instance: {{ include "xrootd.fullname" . }}
+        release: {{ .Release.Name }}
+    spec:
+      hostname: {{ include "xrootd.fullname" . }}
+      containers:
+        - name: xrootd
+          image: {{ include "xrootd.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: XRDPORT
+              value: {{ .Values.xrdPort | quote }}
+          {{- if .Values.seedTestFile }}
+          command: ["bash", "-c"]
+          args:
+            - |
+              mkdir -p /rucio &&
+              echo 'fts-test' > /rucio/fts-test-file &&
+              chown xrootd:xrootd /rucio/fts-test-file &&
+              exec /docker-entrypoint.sh
+          {{- end }}
+          ports:
+            - name: xrootd
+              containerPort: {{ .Values.xrdPort }}
+              protocol: TCP
+          volumeMounts:
+            - name: certs
+              mountPath: /tmp/xrdcert.pem
+              subPath: xrdcert.pem
+              readOnly: true
+            - name: certs
+              mountPath: /tmp/xrdkey.pem
+              subPath: xrdkey.pem
+              readOnly: true
+            - name: certs
+              mountPath: /etc/grid-security/certificates/5fca1cb1.0
+              subPath: rucio_ca.pem
+              readOnly: true
+            - name: configs
+              mountPath: /etc/grid-security/grid-mapfile
+              subPath: grid-mapfile
+              readOnly: true
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: certs
+          secret:
+            secretName: {{ .Values.certsSecret }}
+        - name: configs
+          configMap:
+            name: {{ .Values.configsConfigMap }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

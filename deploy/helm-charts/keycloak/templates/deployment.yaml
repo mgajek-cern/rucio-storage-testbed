@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "keycloak.fullname" . }}
+  labels:
+    app: {{ include "keycloak.name" . }}
+    release: {{ .Release.Name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "keycloak.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "keycloak.name" . }}
+        release: {{ .Release.Name }}
+    spec:
+      hostname: {{ include "keycloak.fullname" . }}
+      containers:
+        - name: keycloak
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - start-dev
+            - --features=token-exchange
+            - --health-enabled=true
+            - --import-realm
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: {{ .Values.admin.username | quote }}
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              value: {{ .Values.admin.password | quote }}
+            - name: KC_HTTPS_CERTIFICATE_FILE
+              value: /etc/x509/https/keycloakcert.pem
+            - name: KC_HTTPS_CERTIFICATE_KEY_FILE
+              value: /etc/x509/https/keycloakkey.pem
+            - name: KC_HOSTNAME
+              value: {{ include "keycloak.fullname" . | quote }}
+            - name: KC_HOSTNAME_STRICT
+              value: "false"
+            - name: KC_HOSTNAME_STRICT_HTTPS
+              value: "false"
+            - name: KC_HTTP_ENABLED
+              value: "true"
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: https
+              containerPort: 8443
+          volumeMounts:
+            - name: certs
+              mountPath: /etc/x509/https/keycloakcert.pem
+              subPath: keycloakcert.pem
+              readOnly: true
+            - name: certs
+              mountPath: /etc/x509/https/keycloakkey.pem
+              subPath: keycloakkey.pem
+              readOnly: true
+            - name: configs
+              mountPath: /opt/keycloak/data/import/realm.json
+              subPath: realm.json
+              readOnly: true
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "curl -sk --fail https://localhost:8443/health/ready || exit 1"]
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: certs
+          secret:
+            secretName: {{ .Values.certsSecret }}
+        - name: configs
+          configMap:
+            name: {{ .Values.configsConfigMap }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

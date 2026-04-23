@@ -1,0 +1,66 @@
+# Default values for the fts chart.
+# The umbrella chart installs this twice:
+#   fts      — legacy GSI, uses the image's baked-in config
+#   fts-oidc — OIDC mode, overrides fts3config with fts3config-oidc and patches
+#              fts-rest-flask with middleware.py / openidconnect.py
+
+image:
+  # Build this from deploy/compose/Dockerfile.fts and push to your registry
+  repository: mgajekcern/test-fts
+  tag: latest
+  pullPolicy: IfNotPresent
+
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  ports:
+    # FTS REST API
+    rest: 8446
+    # FTS monitoring
+    monitoring: 8449
+
+# Enable OIDC mode: mounts fts3config-oidc + the middleware/openidconnect patches
+# and uses docker-entrypoint-oidc.sh
+oidc:
+  enabled: false
+
+# ftsdb Service hostname the server should connect to (set by umbrella)
+ftsdbHost: ftsdb
+
+# Optional MySQL StatefulSet co-located with the FTS server.
+# The umbrella enables one ftsdb per FTS instance (ftsdb, ftsdb-oidc).
+ftsdb:
+  enabled: false
+  hostname: ftsdb
+  image: mysql:8
+  storage: 2Gi
+  resources: {}
+
+# Shared artifact sources (managed by umbrella chart)
+certsSecret: testbed-certs
+# Holds fts3config-oidc, fts3restconfig-oidc, gfal2_http_plugin.conf
+configsConfigMap: testbed-configs
+# Holds docker-entrypoint-oidc.sh and general scripts
+scriptsConfigMap: testbed-scripts
+# Holds fts/middleware.py and fts/openidconnect.py (only needed for oidc mode).
+# Exposed as a Secret (not a ConfigMap) so the same artifact can be reused by
+# the upstream rucio-server chart, which only supports secretMounts.
+patchesSecret: testbed-patches
+
+env:
+  - name: REQUESTS_CA_BUNDLE
+    value: /etc/pki/tls/certs/ca-bundle.crt
+  - name: SSL_CERT_FILE
+    value: /etc/pki/tls/certs/ca-bundle.crt
+
+resources: {}
+
+healthcheck:
+  enabled: true
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -1,0 +1,81 @@
+{{- if .Values.ftsdb.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.ftsdb.hostname }}
+  labels:
+    app: ftsdb
+    instance: {{ .Values.ftsdb.hostname }}
+    release: {{ .Release.Name }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3306
+      targetPort: mysql
+      name: mysql
+  selector:
+    app: ftsdb
+    instance: {{ .Values.ftsdb.hostname }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Values.ftsdb.hostname }}
+  labels:
+    app: ftsdb
+    instance: {{ .Values.ftsdb.hostname }}
+    release: {{ .Release.Name }}
+spec:
+  serviceName: {{ .Values.ftsdb.hostname }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ftsdb
+      instance: {{ .Values.ftsdb.hostname }}
+  template:
+    metadata:
+      labels:
+        app: ftsdb
+        instance: {{ .Values.ftsdb.hostname }}
+        release: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: mysql
+          image: {{ .Values.ftsdb.image | quote }}
+          env:
+            - name: MYSQL_USER
+              value: fts
+            - name: MYSQL_PASSWORD
+              value: fts
+            - name: MYSQL_ROOT_PASSWORD
+              value: fts
+            - name: MYSQL_DATABASE
+              value: fts
+          ports:
+            - name: mysql
+              containerPort: 3306
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+          readinessProbe:
+            exec:
+              command:
+                - mysqladmin
+                - ping
+                - -h
+                - localhost
+                - -ufts
+                - -pfts
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.ftsdb.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.ftsdb.storage }}
+{{- end }}

@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fts.fullname" . }}
+  labels:
+    app: {{ include "fts.name" . }}
+    instance: {{ include "fts.fullname" . }}
+    release: {{ .Release.Name }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.ports.rest }}
+      targetPort: rest
+      protocol: TCP
+      name: rest
+    - port: {{ .Values.service.ports.monitoring }}
+      targetPort: monitoring
+      protocol: TCP
+      name: monitoring
+  selector:
+    app: {{ include "fts.name" . }}
+    instance: {{ include "fts.fullname" . }}

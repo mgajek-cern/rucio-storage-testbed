@@ -1,0 +1,10 @@
+apiVersion: v2
+name: rucio-client
+description: Long-running Rucio client pod (DinD-enabled) for running tests against the testbed
+type: application
+version: 0.1.0
+appVersion: "1"
+keywords:
+  - rucio
+  - client
+  - testing

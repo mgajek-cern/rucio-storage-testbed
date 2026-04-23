@@ -1,0 +1,11 @@
+apiVersion: v2
+name: xrootd-scitokens
+description: XRootD server with SciTokens/OIDC support (custom image built from Dockerfile.xrd-scitokens)
+type: application
+version: 0.1.0
+appVersion: "5"
+keywords:
+  - rucio
+  - xrootd
+  - scitokens
+  - oidc

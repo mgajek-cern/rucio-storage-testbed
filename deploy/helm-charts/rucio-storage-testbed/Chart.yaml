@@ -1,0 +1,116 @@
+apiVersion: v2
+name: rucio-storage-testbed
+description: |
+  Meta-package bundling every service in the rucio-storage-testbed
+  (Rucio server GSI & OIDC, FTS GSI & OIDC, Keycloak, XRootD, StoRM-WebDAV,
+  WebDAV, MinIO, and a client pod) plus their Postgres / MySQL databases.
+type: application
+version: 0.1.0
+appVersion: "1.0"
+keywords:
+  - rucio
+  - testbed
+  - storage
+  - fts
+
+dependencies:
+  # Postgres backends for the two Rucio servers.
+  - name: postgresql
+    version: "~15.5.0"
+    repository: https://charts.bitnami.com/bitnami
+    alias: ruciodb
+    condition: ruciodb.enabled
+  - name: postgresql
+    version: "~15.5.0"
+    repository: https://charts.bitnami.com/bitnami
+    alias: ruciodbOidc
+    condition: ruciodbOidc.enabled
+
+  # Rucio servers — GSI and OIDC variants, both from the upstream chart.
+  - name: rucio-server
+    version: "~38.0.0"
+    repository: https://rucio.github.io/helm-charts
+    alias: rucio
+    condition: rucio.enabled
+  - name: rucio-server
+    version: "~38.0.0"
+    repository: https://rucio.github.io/helm-charts
+    alias: rucioOidc
+    condition: rucioOidc.enabled
+
+  # Local subcharts (file-based).
+  - name: fts
+    version: "0.1.0"
+    repository: "file://../fts"
+    alias: fts
+    condition: fts.enabled
+  - name: fts
+    version: "0.1.0"
+    repository: "file://../fts"
+    alias: ftsOidc
+    condition: ftsOidc.enabled
+
+  - name: keycloak
+    version: "0.1.0"
+    repository: "file://../keycloak"
+    condition: keycloak.enabled
+
+  - name: xrootd
+    version: "0.1.0"
+    repository: "file://../xrootd"
+    alias: xrd1
+    condition: xrd1.enabled
+  - name: xrootd
+    version: "0.1.0"
+    repository: "file://../xrootd"
+    alias: xrd2
+    condition: xrd2.enabled
+
+  - name: xrootd-scitokens
+    version: "0.1.0"
+    repository: "file://../xrootd-scitokens"
+    alias: xrd3
+    condition: xrd3.enabled
+  - name: xrootd-scitokens
+    version: "0.1.0"
+    repository: "file://../xrootd-scitokens"
+    alias: xrd4
+    condition: xrd4.enabled
+
+  - name: webdav
+    version: "0.1.0"
+    repository: "file://../webdav"
+    alias: webdav1
+    condition: webdav1.enabled
+  - name: webdav
+    version: "0.1.0"
+    repository: "file://../webdav"
+    alias: webdav2
+    condition: webdav2.enabled
+
+  - name: storm-webdav
+    version: "0.1.0"
+    repository: "file://../storm-webdav"
+    alias: storm1
+    condition: storm1.enabled
+  - name: storm-webdav
+    version: "0.1.0"
+    repository: "file://../storm-webdav"
+    alias: storm2
+    condition: storm2.enabled
+
+  - name: minio
+    version: "0.1.0"
+    repository: "file://../minio"
+    alias: minio1
+    condition: minio1.enabled
+  - name: minio
+    version: "0.1.0"
+    repository: "file://../minio"
+    alias: minio2
+    condition: minio2.enabled
+
+  - name: rucio-client
+    version: "0.1.0"
+    repository: "file://../rucio-client"
+    condition: rucioClient.enabled

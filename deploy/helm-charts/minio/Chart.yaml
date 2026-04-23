@@ -1,0 +1,10 @@
+apiVersion: v2
+name: minio
+description: MinIO S3-compatible object storage for the testbed, with a bucket-init Job
+type: application
+version: 0.1.0
+appVersion: "RELEASE"
+keywords:
+  - rucio
+  - s3
+  - minio

@@ -1,0 +1,38 @@
+# Rucio client pod — mirrors the rucio-client service in docker-compose.
+# The compose version mounts /var/run/docker.sock for "docker-in-docker" tests;
+# we drop that by default because mounting the node socket is cluster-specific
+# and usually disallowed. Set hostDockerSocket.enabled=true if you really
+# need it.
+
+image:
+  repository: mgajekcern/rucio-client-dind
+  tag: latest
+  pullPolicy: IfNotPresent
+
+fullnameOverride: rucio-client
+
+env:
+  RUCIO_CFG_CLIENT_RUCIO_HOST: http://rucio
+  RUCIO_CFG_CLIENT_AUTH_HOST: http://rucio
+  RUCIO_CFG_CLIENT_AUTH_TYPE: userpass
+  RUCIO_CFG_CLIENT_USERNAME: ddmlab
+  RUCIO_CFG_CLIENT_PASSWORD: secret
+  RUCIO_CFG_CLIENT_ACCOUNT: root
+  REQUESTS_CA_BUNDLE: /etc/grid-security/certificates/rucio_ca.pem
+
+# Shared artifacts provided by the umbrella chart.
+certsSecret: testbed-certs
+# Contains userpass-client.cfg and userpass-client-for-rucio-oidc.cfg
+configsConfigMap: testbed-configs
+# Contains all test scripts
+scriptsConfigMap: testbed-scripts
+
+hostDockerSocket:
+  enabled: false
+  path: /var/run/docker.sock
+
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

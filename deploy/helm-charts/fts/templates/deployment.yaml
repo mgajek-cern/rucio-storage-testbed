@@ -1,0 +1,131 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fts.fullname" . }}
+  labels:
+    app: {{ include "fts.name" . }}
+    instance: {{ include "fts.fullname" . }}
+    release: {{ .Release.Name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "fts.name" . }}
+      instance: {{ include "fts.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "fts.name" . }}
+        instance: {{ include "fts.fullname" . }}
+        release: {{ .Release.Name }}
+    spec:
+      hostname: {{ include "fts.fullname" . }}
+      containers:
+        - name: fts
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.oidc.enabled }}
+          command: ["/bin/bash", "/docker-entrypoint.sh"]
+          {{- end }}
+          env:
+            {{- toYaml .Values.env | nindent 12 }}
+            - name: FTS_DB_HOST
+              value: {{ .Values.ftsdbHost | quote }}
+          ports:
+            - name: rest
+              containerPort: 8446
+              protocol: TCP
+            - name: monitoring
+              containerPort: 8449
+              protocol: TCP
+          volumeMounts:
+            # Certs
+            - name: certs
+              mountPath: /etc/grid-security/hostcert.pem
+              subPath: hostcert.pem
+              readOnly: true
+            - name: certs
+              mountPath: /etc/grid-security/hostkey.pem
+              subPath: hostkey.pem
+              readOnly: true
+            - name: certs
+              mountPath: /etc/grid-security/certificates/5fca1cb1.0
+              subPath: rucio_ca.pem
+              readOnly: true
+            # Shared scripts directory (mirrors the compose bind of shared/scripts → /scripts)
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            # Gfal2 HTTP plugin (always applied, present in both modes)
+            - name: configs
+              mountPath: /etc/gfal2.d/http_plugin.conf
+              subPath: gfal2_http_plugin.conf
+              readOnly: true
+            {{- if .Values.oidc.enabled }}
+            # OIDC-specific configs override the image defaults
+            - name: configs
+              mountPath: /etc/fts3/fts3config
+              subPath: fts3config-oidc
+              readOnly: true
+            - name: configs
+              mountPath: /etc/fts3/fts3restconfig
+              subPath: fts3restconfig-oidc
+              readOnly: true
+            # OIDC entrypoint replaces the default one
+            - name: scripts-fts
+              mountPath: /docker-entrypoint.sh
+              subPath: docker-entrypoint-oidc.sh
+              readOnly: true
+            # Python patches for fts-rest-flask
+            - name: patches
+              mountPath: /tmp/fts-rest-flask/src/fts3rest/fts3rest/config/middleware.py
+              subPath: fts--middleware.py
+              readOnly: true
+            - name: patches
+              mountPath: /tmp/fts-rest-flask/src/fts3rest/fts3rest/lib/openidconnect.py
+              subPath: fts--openidconnect.py
+              readOnly: true
+            {{- end }}
+          {{- if .Values.healthcheck.enabled }}
+          readinessProbe:
+            exec:
+              command: ["curl", "-sk", "https://localhost:8446/whoami"]
+            initialDelaySeconds: {{ .Values.healthcheck.initialDelaySeconds }}
+            periodSeconds: {{ .Values.healthcheck.periodSeconds }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: certs
+          secret:
+            secretName: {{ .Values.certsSecret }}
+        - name: scripts
+          configMap:
+            name: {{ .Values.scriptsConfigMap }}
+            defaultMode: 0755
+        {{- if .Values.oidc.enabled }}
+        - name: scripts-fts
+          configMap:
+            name: {{ .Values.scriptsConfigMap }}-fts
+            defaultMode: 0755
+        {{- end }}
+        - name: configs
+          configMap:
+            name: {{ .Values.configsConfigMap }}
+        {{- if .Values.oidc.enabled }}
+        - name: patches
+          secret:
+            secretName: {{ .Values.patchesSecret }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,11 @@
+apiVersion: v2
+name: storm-webdav
+description: StoRM WebDAV storage endpoint with OAuth/SciTokens support
+type: application
+version: 0.1.0
+appVersion: "1.12.0"
+keywords:
+  - rucio
+  - storm
+  - webdav
+  - oauth

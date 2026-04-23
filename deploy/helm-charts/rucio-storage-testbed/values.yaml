@@ -1,0 +1,330 @@
+# ============================================================================
+# rucio-storage-testbed — umbrella values
+# ============================================================================
+# This file is the single source of truth for the testbed. Each top-level key
+# below corresponds to a dependency alias in Chart.yaml and is passed directly
+# to that subchart as its .Values.
+#
+# Three shared resources are created by templates in this chart and consumed
+# by all subcharts:
+#   - Secret      "testbed-certs"   (all PEMs)
+#   - ConfigMap   "testbed-configs" (all non-secret config files)
+#   - ConfigMap   "testbed-scripts" (all entrypoint/test scripts)
+#   - ConfigMap   "testbed-patches" (Python patches for FTS and Rucio)
+#
+# These are populated from files/ under this chart. See README.md for how to
+# place your source tree before running `helm install`.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Shared certificates — supply via --set-file from your ./certs/ directory.
+# Keys map 1:1 to the filenames used by the original compose file's bind
+# mounts; subcharts reference them with subPath.
+# ---------------------------------------------------------------------------
+certs:
+  # When enabled, this chart creates the testbed-certs Secret. Disable if
+  # you want to manage the Secret out-of-band.
+  create: true
+  secretName: testbed-certs
+  # Contents: use `helm install --set-file certs.files.<key>=./path/to.pem`
+  # to populate each entry (values.yaml has placeholders for convenience only).
+  files:
+    hostcert.pem: ""
+    hostkey.pem: ""
+    hostcert_with_key.pem: ""
+    rucio_ca.pem: ""
+    xrdcert.pem: ""
+    xrdkey.pem: ""
+    keycloakcert.pem: ""
+    keycloakkey.pem: ""
+    webdav1cert.pem: ""
+    webdav1key.pem: ""
+    webdav2cert.pem: ""
+    webdav2key.pem: ""
+    storm1cert.pem: ""
+    storm1key.pem: ""
+    storm2cert.pem: ""
+    storm2key.pem: ""
+    # Java keystore for StoRM-WebDAV (binary — use --set-file, helm base64-encodes it)
+    storm-cacerts: ""
+
+# ---------------------------------------------------------------------------
+# Shared ConfigMaps — populated from ./files/ relative to this chart.
+#
+# Lay out the files before `helm install`:
+#   charts/rucio-storage-testbed/files/
+#     ├── configs/         ← everything from the compose repo's shared/config/
+#     │   ├── fts/ ...
+#     │   ├── keycloak/realm.json
+#     │   ├── rucio/ ...
+#     │   ├── storm-webdav/ ...
+#     │   └── xrootd/ ...
+#     ├── scripts/         ← everything from shared/scripts/
+#     └── patches/         ← everything from shared/patches/
+#
+# The configMap/secret templates use .Files.Glob to slurp them in, flattening
+# the directory structure so every subchart sees them as top-level keys
+# (matching the compose bind-mount targets).
+# ---------------------------------------------------------------------------
+configs:
+  create: true
+  configMapName: testbed-configs
+scripts:
+  create: true
+  configMapName: testbed-scripts
+patches:
+  create: true
+  configMapName: testbed-patches
+
+# ===========================================================================
+# DATABASES
+# ===========================================================================
+
+ruciodb:
+  enabled: true
+  # bitnami/postgresql chart values
+  fullnameOverride: ruciodb
+  auth:
+    username: rucio
+    password: rucio
+    database: rucio
+  primary:
+    persistence:
+      enabled: true
+      size: 2Gi
+
+ruciodbOidc:
+  enabled: true
+  fullnameOverride: ruciodb-oidc
+  auth:
+    username: rucio
+    password: rucio
+    database: rucio
+  primary:
+    persistence:
+      enabled: true
+      size: 2Gi
+
+# ===========================================================================
+# RUCIO SERVERS — upstream rucio/rucio-server chart
+# ===========================================================================
+#
+# Both servers mount server.cfg (or oidc-server.cfg) at /opt/rucio/etc/rucio.cfg
+# via secretMounts. The config files themselves live in the testbed-configs
+# ConfigMap; the rucio-server chart's secretMounts expect a Secret, so we
+# create a small pass-through Secret at the umbrella level (see templates/).
+
+rucio:
+  enabled: true
+  fullnameOverride: rucio
+  replicaCount: 1
+  image:
+    repository: rucio/rucio-server
+    # Pinned digest from compose:
+    tag: release-38
+    pullPolicy: IfNotPresent
+  useSSL: false
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+  useDeprecatedImplicitSecrets: false
+  # Mount our managed configs/certs/scripts into the server pod.
+  secretMounts:
+    - secretFullName: testbed-certs
+      volumeName: certs
+      mountPath: /etc/grid-security/hostcert.pem
+      subPath: hostcert.pem
+    - secretFullName: testbed-certs
+      volumeName: certs
+      mountPath: /etc/grid-security/hostkey.pem
+      subPath: hostkey.pem
+    - secretFullName: testbed-certs
+      volumeName: certs-ca1
+      mountPath: /etc/grid-security/certificates/5fca1cb1.0
+      subPath: rucio_ca.pem
+    - secretFullName: testbed-certs
+      volumeName: certs-ca2
+      mountPath: /etc/grid-security/certificates/rucio_ca.pem
+      subPath: rucio_ca.pem
+    - secretFullName: testbed-certs
+      volumeName: hostcert-with-key
+      mountPath: /etc/grid-security/hostcert_with_key.pem
+      subPath: hostcert_with_key.pem
+    - secretFullName: rucio-server-cfg
+      volumeName: rucio-cfg
+      mountPath: /opt/rucio/etc/rucio.cfg
+      subPath: server.cfg
+    - secretFullName: rucio-server-cfg
+      volumeName: rucio-alembic
+      mountPath: /opt/rucio/etc/alembic.ini
+      subPath: alembic.ini
+  # Scripts directory mirror of the compose bind `shared/scripts → /scripts`
+  # is done via hostPathMounts → configMap; rucio-server's chart treats
+  # hostPathMounts as literal hostPath, so we use an additionalEnvs
+  # post-deploy approach instead. Simplest: run bootstrap-db.py as an initContainer.
+  # The upstream chart doesn't expose initContainers; we therefore override the
+  # entrypoint via a ConfigMap-mounted script. See templates/rucio-bootstrap.yaml.
+
+rucioOidc:
+  enabled: false   # flip on to deploy the OIDC instance too
+  fullnameOverride: rucio-oidc
+  replicaCount: 1
+  image:
+    repository: rucio/rucio-server
+    tag: release-38
+    pullPolicy: IfNotPresent
+  useSSL: false
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+  useDeprecatedImplicitSecrets: false
+  secretMounts:
+    - secretFullName: testbed-certs
+      volumeName: certs
+      mountPath: /etc/grid-security/hostcert.pem
+      subPath: hostcert.pem
+    - secretFullName: testbed-certs
+      volumeName: certs2
+      mountPath: /etc/grid-security/hostkey.pem
+      subPath: hostkey.pem
+    - secretFullName: testbed-certs
+      volumeName: certs-ca
+      mountPath: /etc/grid-security/certificates/5fca1cb1.0
+      subPath: rucio_ca.pem
+    - secretFullName: rucio-oidc-cfg
+      volumeName: rucio-cfg
+      mountPath: /opt/rucio/etc/rucio.cfg
+      subPath: oidc-server.cfg
+    - secretFullName: rucio-oidc-cfg
+      volumeName: rucio-alembic
+      mountPath: /opt/rucio/etc/alembic.ini
+      subPath: alembic-oidc.ini
+    - secretFullName: rucio-oidc-cfg
+      volumeName: idpsecrets
+      mountPath: /opt/rucio/etc/idpsecrets.json
+      subPath: idpsecrets.json
+    - secretFullName: testbed-patches
+      volumeName: fts3-patch
+      mountPath: /usr/local/lib/python3.9/site-packages/rucio/transfertool/fts3.py
+      subPath: rucio--fts3.py
+    - secretFullName: testbed-patches
+      volumeName: constants-patch
+      mountPath: /usr/local/lib/python3.9/site-packages/rucio/common/constants.py
+      subPath: rucio--constants.py
+
+# ===========================================================================
+# FTS — GSI and OIDC variants
+# ===========================================================================
+
+fts:
+  enabled: true
+  fullnameOverride: fts
+  oidc:
+    enabled: false
+  ftsdb:
+    enabled: true
+    hostname: ftsdb
+  ftsdbHost: ftsdb
+
+ftsOidc:
+  enabled: false
+  fullnameOverride: fts-oidc
+  oidc:
+    enabled: true
+  ftsdb:
+    enabled: true
+    hostname: ftsdb-oidc
+  ftsdbHost: ftsdb-oidc
+
+# ===========================================================================
+# Keycloak
+# ===========================================================================
+
+keycloak:
+  enabled: false   # only needed for OIDC flows
+  fullnameOverride: keycloak
+
+# ===========================================================================
+# XRootD storage endpoints
+# ===========================================================================
+
+xrd1:
+  enabled: true
+  fullnameOverride: xrd1
+  seedTestFile: true   # pre-creates /rucio/fts-test-file
+
+xrd2:
+  enabled: true
+  fullnameOverride: xrd2
+
+xrd3:
+  enabled: false
+  fullnameOverride: xrd3
+
+xrd4:
+  enabled: false
+  fullnameOverride: xrd4
+
+# ===========================================================================
+# WebDAV endpoints
+# ===========================================================================
+
+webdav1:
+  enabled: true
+  fullnameOverride: webdav1
+  certFiles:
+    hostcert: webdav1cert.pem
+    hostkey: webdav1key.pem
+    ca: rucio_ca.pem
+
+webdav2:
+  enabled: true
+  fullnameOverride: webdav2
+  certFiles:
+    hostcert: webdav2cert.pem
+    hostkey: webdav2key.pem
+    ca: rucio_ca.pem
+
+# ===========================================================================
+# StoRM-WebDAV endpoints
+# ===========================================================================
+
+storm1:
+  enabled: false
+  fullnameOverride: storm1
+  certFiles:
+    hostcert: storm1cert.pem
+    hostkey: storm1key.pem
+  authz:
+    issuer: https://storm1:8443
+
+storm2:
+  enabled: false
+  fullnameOverride: storm2
+  certFiles:
+    hostcert: storm2cert.pem
+    hostkey: storm2key.pem
+  authz:
+    issuer: https://storm2:8443
+
+# ===========================================================================
+# MinIO endpoints
+# ===========================================================================
+
+minio1:
+  enabled: false
+  fullnameOverride: minio1
+
+minio2:
+  enabled: false
+  fullnameOverride: minio2
+
+# ===========================================================================
+# Rucio client pod
+# ===========================================================================
+
+rucioClient:
+  enabled: true
+  fullnameOverride: rucio-client

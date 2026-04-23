@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "webdav.fullname" . }}
+  labels:
+    app: {{ include "webdav.name" . }}
+    instance: {{ include "webdav.fullname" . }}
+    release: {{ .Release.Name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "webdav.name" . }}
+      instance: {{ include "webdav.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "webdav.name" . }}
+        instance: {{ include "webdav.fullname" . }}
+        release: {{ .Release.Name }}
+    spec:
+      hostname: {{ include "webdav.fullname" . }}
+      containers:
+        - name: webdav
+          image: {{ include "webdav.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["bash", "-c"]
+          args:
+            - |
+              . /etc/apache2/envvars &&
+              a2dismod zgridsite || true &&
+              a2enmod ssl dav dav_fs &&
+              a2ensite default-ssl &&
+              openssl rehash /etc/grid-security/certificates/ &&
+              mkdir -p /var/www/webdav &&
+              chown www-data:www-data /var/www/webdav &&
+              exec apache2 -D FOREGROUND
+          ports:
+            - name: https
+              containerPort: 443
+              protocol: TCP
+          volumeMounts:
+            - name: certs
+              mountPath: /etc/grid-security/hostcert.pem
+              subPath: {{ .Values.certFiles.hostcert }}
+              readOnly: true
+            - name: certs
+              mountPath: /etc/grid-security/hostkey.pem
+              subPath: {{ .Values.certFiles.hostkey }}
+              readOnly: true
+            - name: certs
+              mountPath: /etc/grid-security/certificates/5fca1cb1.0
+              subPath: {{ .Values.certFiles.ca }}
+              readOnly: true
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: certs
+          secret:
+            secretName: {{ .Values.certsSecret }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

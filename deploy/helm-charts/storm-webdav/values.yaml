@@ -1,0 +1,50 @@
+# StoRM WebDAV — installed twice by umbrella (storm1, storm2).
+
+image:
+  repository: ghcr.io/italiangrid/storm-webdav
+  tag: v1.12.0
+  pullPolicy: IfNotPresent
+
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  ports:
+    https: 8443
+    http: 8085
+
+# Per-instance cert filenames inside the shared certs Secret.
+certFiles:
+  hostcert: storm1cert.pem
+  hostkey: storm1key.pem
+
+# Secrets/ConfigMaps provided by the umbrella chart.
+certsSecret: testbed-certs
+# Contains storm-application-issuers.yml, storm-application-policies.yml,
+# data.properties, logback-access.xml
+configsConfigMap: testbed-configs
+# Contains trustanchors/ and storm-cacerts (Java keystore)
+trustSecret: testbed-certs
+
+authz:
+  # HTTPS issuer URL as embedded into tokens — must match the Service name
+  issuer: https://storm1:8443
+  secret: "supersupersupersecretlongerthan32chars!"
+
+jvmOpts: >-
+  -Xms256m -Xmx512m
+  -Djava.security.egd=file:/dev/./urandom
+  -Dspring.config.location=optional:classpath:/application.yml,file:/app/application-issuers.yml,file:/app/application-policies.yml
+  -Dlogging.level.org.italiangrid.storm.webdav.oauth=DEBUG
+  -Dlogging.level.org.springframework.security=DEBUG
+
+persistence:
+  enabled: true
+  size: 2Gi
+  storageClass: ""
+
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
