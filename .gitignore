@@ -5,6 +5,7 @@
 rucio-truststore.jks
 *.namespaces
 *.signing_policy
+*.tgz
 storm-cacerts
 trustanchors
 !rucio_ca.key.pem
