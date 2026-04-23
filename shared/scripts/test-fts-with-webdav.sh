@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-webdav.sh — smoke tests for WebDAV (rucio/test-webdav) endpoint
+# test-webdav.sh — tests for WebDAV (rucio/test-webdav) endpoint
 # Run from the repo root after `docker-compose up -d`
 #
 # WebDAV cert note: webdavcert.pem must have CN=webdav1 and CN=webdav2
@@ -179,4 +179,4 @@ echo "--- xrd2 received file ---"
 docker exec compose-xrd2-1 ls -la /rucio/fts-test-file-from-webdav
 
 echo ""
-echo "All smoke tests done."
+echo "All tests done."

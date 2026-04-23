@@ -104,34 +104,83 @@ NSEOF
 }
 
 generate_java_stores() {
-    echo "=== Generating Java Truststores via Docker ==="
+    echo "=== Generating Java Truststores ==="
 
-    # Cleanup old stores
-    sudo rm -f "$CERTS/rucio-truststore.jks" "$CERTS/storm-cacerts"
+    # Clean previous artifacts
+    rm -f "$CERTS/storm-cacerts"
 
-    if ! docker image inspect "$STORM_IMAGE" >/dev/null 2>&1; then
-        docker pull --platform linux/amd64 "$STORM_IMAGE"
+    # Ensure certs dir exists
+    mkdir -p "$CERTS"
+
+    # ── 1. Try Docker FIRST (authoritative path, same as CI) ────────────────
+    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+        echo "Docker detected. Attempting truststore generation via StoRM image..."
+
+        if ! docker image inspect "$STORM_IMAGE" >/dev/null 2>&1; then
+            docker pull --platform linux/amd64 "$STORM_IMAGE" >/dev/null
+        fi
+
+        if docker run --rm --platform linux/amd64 -u root \
+            -v "$(pwd)/$CERTS:/certs" \
+            --entrypoint /bin/sh "$STORM_IMAGE" -c "
+                set -e
+                cp /opt/java/openjdk/lib/security/cacerts /certs/storm-cacerts
+                keytool -import -trustcacerts -noprompt \
+                  -alias rucio-ca \
+                  -file /certs/rucio_ca.pem \
+                  -keystore /certs/storm-cacerts \
+                  -storepass changeit
+            " 2>/dev/null; then
+
+            echo "✓ Truststore generated via Docker (CI-parity path)"
+
+            # Fix Docker root-owned files
+            sudo chown -R "$(id -u):$(id -g)" "$CERTS" 2>/dev/null || true
+            chmod 644 "$CERTS/storm-cacerts"
+
+            return 0
+        else
+            echo "⚠ Docker run failed. Falling back to local keytool..."
+        fi
+    else
+        echo "Docker not available. Using local keytool fallback..."
     fi
 
-    docker run --rm --platform linux/amd64 \
-      -u root \
-      -v "$PWD/$CERTS:/certs" \
-      --entrypoint /bin/sh "$STORM_IMAGE" -c "
-        set -e
-        # Note: Standalone rucio-truststore.jks is currently commented out in logic
-        # as StoRM mounts storm-cacerts over the system cacerts file.
+    # ── 2. Fallback: LOCAL keytool (minimal + strict) ───────────────────────
+    if ! command -v keytool >/dev/null 2>&1; then
+        echo "ERROR: keytool not found and Docker unavailable/failed."
+        exit 1
+    fi
 
-        # keytool -import -trustcacerts -noprompt -alias rucio-ca -file /certs/rucio_ca.pem \
-        #  -keystore /certs/rucio-truststore.jks -storepass changeit
+    # Require a valid JAVA_HOME or resolvable one
+    if [[ -z "${JAVA_HOME:-}" ]]; then
+        if command -v java >/dev/null 2>&1; then
+            JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
+        else
+            echo "ERROR: JAVA_HOME not set and cannot infer Java installation."
+            exit 1
+        fi
+    fi
 
-        # Create full cacerts backup by copying internal one to volume then updating it
-        cp /opt/java/openjdk/lib/security/cacerts /certs/storm-cacerts
-        keytool -import -trustcacerts -noprompt -alias rucio-ca -file /certs/rucio_ca.pem \
-          -keystore /certs/storm-cacerts -storepass changeit
-    "
+    CACERTS="$JAVA_HOME/lib/security/cacerts"
 
-    sudo chown $(id -u):$(id -g) "$CERTS/storm-cacerts" || true
+    if [[ ! -f "$CACERTS" ]]; then
+        echo "ERROR: Cannot find cacerts at $CACERTS"
+        exit 1
+    fi
+
+    echo "Using local Java truststore base: $CACERTS"
+
+    cp "$CACERTS" "$CERTS/storm-cacerts"
     chmod 644 "$CERTS/storm-cacerts"
+
+    keytool -import -trustcacerts -noprompt \
+      -alias rucio-ca \
+      -file "$CERTS/rucio_ca.pem" \
+      -keystore "$CERTS/storm-cacerts" \
+      -storepass changeit
+
+    echo "✓ Truststore generated via local keytool"
 }
 
 cleanup_intermediaries() {

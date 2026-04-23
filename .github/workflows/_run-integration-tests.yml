@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up QEMU for multi-arch emulation
         uses: docker/setup-qemu-action@v3
@@ -36,67 +36,6 @@ jobs:
 
       - name: Start stack
         run: docker compose -f ${{ inputs.compose_file }} up -d
-
-      - name: Wait for StoRM containers and import rucio CA into JVM truststore
-        run: |
-          # Wait for storm containers to be running (arm64 QEMU emulation is slow).
-          # If still exited after timeout, dump logs to diagnose crash.
-          for c in compose-storm1-1 compose-storm2-1; do
-            echo "  Waiting for $c to be running..."
-            for i in $(seq 1 36); do
-              state=$(docker inspect --format='{{.State.Status}}' "$c" 2>/dev/null) || state="not_found"
-              [[ "$state" == "running" ]] && { echo "  $c is running"; break; }
-              if [[ "$i" == "36" ]]; then
-                echo "  $c still $state after 3 minutes — dumping logs:"
-                docker logs "$c" --tail 30 2>&1 || true
-              fi
-              echo "    [$i] $c state=$state — waiting..."; sleep 5
-            done
-            state=$(docker inspect --format='{{.State.Status}}' "$c" 2>/dev/null) || state="not_found"
-            if [[ "$state" == "running" ]]; then
-              docker exec --user root "$c" sh -c \
-                "keytool -import -trustcacerts -noprompt \
-                  -alias rucio-dev-ca \
-                  -file /etc/grid-security/certificates/rucio_ca.pem \
-                  -keystore /opt/java/openjdk/lib/security/cacerts \
-                  -storepass changeit 2>/dev/null || true" \
-                && echo "  $c: CA imported" || echo "  $c: keytool exec failed"
-            else
-              echo "  $c: skipping keytool (container not running)"
-            fi
-          done
-
-
-      - name: Wait for FTS
-        run: |
-          for i in $(seq 1 40); do
-            code=$(curl -sk -o /dev/null -w '%{http_code}' \
-              --cert certs/hostcert.pem --key certs/hostkey.pem \
-              --cacert certs/rucio_ca.pem https://localhost:8446/whoami) || true
-            [[ "$code" == "200" ]] && { echo "FTS ready"; exit 0; }
-            echo "  [$i] HTTP $code"; sleep 5
-          done
-          docker compose -f ${{ inputs.compose_file }} logs fts; exit 1
-
-      - name: Wait for Rucio
-        run: |
-          for i in $(seq 1 40); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' \
-              http://localhost:8070/ping) || true
-            [[ "$code" == "200" ]] && { echo "Rucio ready"; exit 0; }
-            echo "  [$i] HTTP $code"; sleep 5
-          done
-          docker compose -f ${{ inputs.compose_file }} logs rucio; exit 1
-
-      - name: Wait for Keycloak
-        run: |
-          for i in $(seq 1 40); do
-            code=$(curl -skv -o /dev/null -w '%{http_code}' \
-              https://localhost:8443/realms/rucio/.well-known/openid-configuration) || true
-            [[ "$code" == "200" ]] && { echo "Keycloak ready"; exit 0; }
-            echo "  [$i] HTTP $code"; sleep 5
-          done
-          docker compose -f ${{ inputs.compose_file }} logs keycloak; exit 1
 
       - name: Bootstrap Rucio (seeds RSEs + token provider + restarts storm/fts-oidc)
         run: make bootstrap

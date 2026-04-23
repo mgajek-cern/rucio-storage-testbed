@@ -111,7 +111,7 @@ clean: ## Remove generated certs and volumes; keep CA (rucio_ca.pem + key)
 	@# Preserve the CA so we don't have to re-trust it on every iteration.
 	@# We group the patterns with -o (OR) and \( \) to apply the ! -name (NOT) logic to all of them.
 	find certs -maxdepth 1 -type f \
-		\( -name '*.pem' -o -name '*.namespaces' -o -name '*.signing_policy' \) \
+		\( -name '*.pem' -o -name '*.namespaces' -o -name '*.signing_policy' -o -name '*.csr' \) \
 		! -name 'rucio_ca.pem' \
 		! -name 'rucio_ca.key.pem' \
 		-delete 2>/dev/null || true

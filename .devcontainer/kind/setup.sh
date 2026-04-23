@@ -23,6 +23,17 @@ check_requirements() {
     echo -e "${GREEN}Docker is ready${NC}\n"
 }
 
+install_java() {
+    if ! command -v keytool &> /dev/null; then
+        echo -e "${BLUE}Installing OpenJDK (required for certificate generation)...${NC}"
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq default-jdk-headless
+        echo -e "${GREEN}OpenJDK installed successfully${NC}\n"
+    else
+        echo -e "${GREEN}Java/Keytool already installed${NC}\n"
+    fi
+}
+
 install_kind() {
     local KIND_RELEASE="v0.29.0"
     echo -e "${BLUE}Installing Kind $KIND_RELEASE...${NC}"
@@ -52,11 +63,7 @@ install_chart_testing() {
     curl -sSL -o "$tmp/ct.tar.gz" \
         "https://github.com/helm/chart-testing/releases/download/$CT_VERSION/chart-testing_${CT_VERSION#v}_linux_${ARCH}.tar.gz"
 
-    # Extract into the tmp dir — the tarball ships with a top-level
-    # README.md, LICENSE, and etc/ that would clobber the repo's own
-    # files if extracted into the current directory.
     tar -xzf "$tmp/ct.tar.gz" -C "$tmp"
-
     sudo install -m 0755 "$tmp/ct" /usr/local/bin/ct
 
     echo -e "${BLUE}Installing Python dependencies...${NC}"
@@ -86,7 +93,8 @@ print_summary() {
     echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${BLUE}║                    Sample Commands                           ║${NC}"
     echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
-    echo -e "${CYAN}ct lint --all${NC} or ${CYAN}helm lint charts/rucio-server/${NC}"
+    echo -e "${CYAN}ct lint --all${NC} or ${CYAN}helm lint helm-charts/fts/${NC}"
+    echo -e "${CYAN}make certs${NC} (to generate certificates)"
     echo -e "${GREEN}Setup complete!${NC}"
 }
 
@@ -97,6 +105,7 @@ echo -e "${BLUE}║                 Kind Cluster Setup Script                   
 echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}\n"
 
 check_requirements
+install_java
 install_kind
 install_chart_testing
 generate_configs
