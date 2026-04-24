@@ -1,43 +1,26 @@
 name: Build multi-arch images
-
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-local:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
-          - name: fts
-            file: ./deploy/compose/Dockerfile.fts
-            image: test-fts
-          - name: xrd-scitokens
-            file: ./deploy/compose/Dockerfile.xrd-scitokens
-            image: test-xrd-scitokens
-          - name: rucio-client-dind
-            file: ./deploy/compose/Dockerfile.rucio-client-dind
-            image: rucio-client-dind
+          - { name: fts,               file: ./deploy/compose/Dockerfile.fts,               image: test-fts }
+          - { name: xrd-scitokens,     file: ./deploy/compose/Dockerfile.xrd-scitokens,     image: test-xrd-scitokens }
+          - { name: rucio-client-dind, file: ./deploy/compose/Dockerfile.rucio-client-dind, image: rucio-client-dind }
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: amd64,arm64
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v3
+        with: { platforms: amd64,arm64 }
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and push ${{ matrix.name }}
-        uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v5
         with:
           context: .
           file: ${{ matrix.file }}
@@ -48,3 +31,28 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  build-storm-webdav:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: italiangrid/storm-webdav
+          ref: v1.12.0
+      - uses: docker/setup-qemu-action@v3
+        with: { platforms: amd64,arm64 }
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/storm-webdav:v1.12.0
+            ${{ secrets.DOCKERHUB_USERNAME }}/storm-webdav:latest
+          cache-from: type=gha,scope=storm-webdav
+          cache-to: type=gha,mode=max,scope=storm-webdav
