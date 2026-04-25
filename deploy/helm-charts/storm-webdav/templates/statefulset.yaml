@@ -93,6 +93,8 @@ spec:
               readOnly: true
             - name: data
               mountPath: /storage/data
+            - name: vomsdir
+              mountPath: /etc/grid-security/vomsdir
           readinessProbe:
             httpGet:
               path: /.storm-webdav/actuator/health
@@ -123,6 +125,8 @@ spec:
         - name: configs
           configMap:
             name: {{ .Values.configsConfigMap }}
+        - name: vomsdir
+          emptyDir: {}
   volumeClaimTemplates:
     - metadata:
         name: data

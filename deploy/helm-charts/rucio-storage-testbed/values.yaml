@@ -10,24 +10,15 @@
 #   - Secret      "testbed-certs"   (all PEMs)
 #   - ConfigMap   "testbed-configs" (all non-secret config files)
 #   - ConfigMap   "testbed-scripts" (all entrypoint/test scripts)
-#   - ConfigMap   "testbed-patches" (Python patches for FTS and Rucio)
+#   - Secret      "testbed-patches" (Python patches for FTS and Rucio)
 #
 # These are populated from files/ under this chart. See README.md for how to
 # place your source tree before running `helm install`.
 # ============================================================================
 
-# ---------------------------------------------------------------------------
-# Shared certificates — supply via --set-file from your ./certs/ directory.
-# Keys map 1:1 to the filenames used by the original compose file's bind
-# mounts; subcharts reference them with subPath.
-# ---------------------------------------------------------------------------
 certs:
-  # When enabled, this chart creates the testbed-certs Secret. Disable if
-  # you want to manage the Secret out-of-band.
   create: true
   secretName: testbed-certs
-  # Contents: use `helm install --set-file certs.files.<key>=./path/to.pem`
-  # to populate each entry (values.yaml has placeholders for convenience only).
   files:
     hostcert.pem: ""
     hostkey.pem: ""
@@ -45,27 +36,8 @@ certs:
     storm1key.pem: ""
     storm2cert.pem: ""
     storm2key.pem: ""
-    # Java keystore for StoRM-WebDAV (binary — use --set-file, helm base64-encodes it)
     storm-cacerts: ""
 
-# ---------------------------------------------------------------------------
-# Shared ConfigMaps — populated from ./files/ relative to this chart.
-#
-# Lay out the files before `helm install`:
-#   charts/rucio-storage-testbed/files/
-#     ├── configs/         ← everything from the compose repo's shared/config/
-#     │   ├── fts/ ...
-#     │   ├── keycloak/realm.json
-#     │   ├── rucio/ ...
-#     │   ├── storm-webdav/ ...
-#     │   └── xrootd/ ...
-#     ├── scripts/         ← everything from shared/scripts/
-#     └── patches/         ← everything from shared/patches/
-#
-# The configMap/secret templates use .Files.Glob to slurp them in, flattening
-# the directory structure so every subchart sees them as top-level keys
-# (matching the compose bind-mount targets).
-# ---------------------------------------------------------------------------
 configs:
   create: true
   configMapName: testbed-configs
@@ -81,6 +53,8 @@ patches:
 # ===========================================================================
 
 ruciodb:
+  image:
+    tag: "latest"
   enabled: true
   # bitnami/postgresql chart values
   fullnameOverride: ruciodb
@@ -94,6 +68,8 @@ ruciodb:
       size: 2Gi
 
 ruciodbOidc:
+  image:
+    tag: "latest"
   enabled: true
   fullnameOverride: ruciodb-oidc
   auth:
@@ -108,11 +84,6 @@ ruciodbOidc:
 # ===========================================================================
 # RUCIO SERVERS — upstream rucio/rucio-server chart
 # ===========================================================================
-#
-# Both servers mount server.cfg (or oidc-server.cfg) at /opt/rucio/etc/rucio.cfg
-# via secretMounts. The config files themselves live in the testbed-configs
-# ConfigMap; the rucio-server chart's secretMounts expect a Secret, so we
-# create a small pass-through Secret at the umbrella level (see templates/).
 
 rucio:
   enabled: true
@@ -121,7 +92,7 @@ rucio:
   image:
     repository: rucio/rucio-server
     # Pinned digest from compose:
-    tag: release-38
+    tag: release-40.0.0
     pullPolicy: IfNotPresent
   useSSL: false
   service:
@@ -132,47 +103,41 @@ rucio:
   # Mount our managed configs/certs/scripts into the server pod.
   secretMounts:
     - secretFullName: testbed-certs
-      volumeName: certs
+      volumeName: certs-hostcert
       mountPath: /etc/grid-security/hostcert.pem
       subPath: hostcert.pem
     - secretFullName: testbed-certs
-      volumeName: certs
+      volumeName: certs-hostkey
       mountPath: /etc/grid-security/hostkey.pem
       subPath: hostkey.pem
     - secretFullName: testbed-certs
-      volumeName: certs-ca1
+      volumeName: certs-ca-hash
       mountPath: /etc/grid-security/certificates/5fca1cb1.0
       subPath: rucio_ca.pem
     - secretFullName: testbed-certs
-      volumeName: certs-ca2
+      volumeName: certs-ca-pem
       mountPath: /etc/grid-security/certificates/rucio_ca.pem
       subPath: rucio_ca.pem
     - secretFullName: testbed-certs
-      volumeName: hostcert-with-key
+      volumeName: certs-hostcert-with-key
       mountPath: /etc/grid-security/hostcert_with_key.pem
       subPath: hostcert_with_key.pem
     - secretFullName: rucio-server-cfg
-      volumeName: rucio-cfg
+      volumeName: rucio-cfg-server
       mountPath: /opt/rucio/etc/rucio.cfg
       subPath: server.cfg
     - secretFullName: rucio-server-cfg
-      volumeName: rucio-alembic
+      volumeName: rucio-cfg-alembic
       mountPath: /opt/rucio/etc/alembic.ini
       subPath: alembic.ini
-  # Scripts directory mirror of the compose bind `shared/scripts → /scripts`
-  # is done via hostPathMounts → configMap; rucio-server's chart treats
-  # hostPathMounts as literal hostPath, so we use an additionalEnvs
-  # post-deploy approach instead. Simplest: run bootstrap-db.py as an initContainer.
-  # The upstream chart doesn't expose initContainers; we therefore override the
-  # entrypoint via a ConfigMap-mounted script. See templates/rucio-bootstrap.yaml.
 
-rucioOidc:
-  enabled: false   # flip on to deploy the OIDC instance too
+"rucio-oidc":
+  enabled: true
   fullnameOverride: rucio-oidc
   replicaCount: 1
   image:
     repository: rucio/rucio-server
-    tag: release-38
+    tag: release-40.0.0
     pullPolicy: IfNotPresent
   useSSL: false
   service:
@@ -182,26 +147,34 @@ rucioOidc:
   useDeprecatedImplicitSecrets: false
   secretMounts:
     - secretFullName: testbed-certs
-      volumeName: certs
+      volumeName: certs-hostcert
       mountPath: /etc/grid-security/hostcert.pem
       subPath: hostcert.pem
     - secretFullName: testbed-certs
-      volumeName: certs2
+      volumeName: certs-hostkey
       mountPath: /etc/grid-security/hostkey.pem
       subPath: hostkey.pem
     - secretFullName: testbed-certs
-      volumeName: certs-ca
+      volumeName: certs-ca-hash
       mountPath: /etc/grid-security/certificates/5fca1cb1.0
       subPath: rucio_ca.pem
-    - secretFullName: rucio-oidc-cfg
-      volumeName: rucio-cfg
+    - secretFullName: testbed-certs
+      volumeName: certs-ca-pem
+      mountPath: /etc/grid-security/certificates/rucio_ca.pem
+      subPath: rucio_ca.pem
+    - secretFullName: testbed-certs
+      volumeName: certs-hostcert-with-key
+      mountPath: /etc/grid-security/hostcert_with_key.pem
+      subPath: hostcert_with_key.pem
+    - secretFullName: rucio-oidc-server-cfg
+      volumeName: rucio-cfg-server
       mountPath: /opt/rucio/etc/rucio.cfg
       subPath: oidc-server.cfg
-    - secretFullName: rucio-oidc-cfg
-      volumeName: rucio-alembic
+    - secretFullName: rucio-oidc-server-cfg
+      volumeName: rucio-cfg-alembic
       mountPath: /opt/rucio/etc/alembic.ini
       subPath: alembic-oidc.ini
-    - secretFullName: rucio-oidc-cfg
+    - secretFullName: rucio-oidc-server-cfg
       volumeName: idpsecrets
       mountPath: /opt/rucio/etc/idpsecrets.json
       subPath: idpsecrets.json
@@ -222,14 +195,14 @@ fts:
   enabled: true
   fullnameOverride: fts
   oidc:
-    enabled: false
+    enabled: true
   ftsdb:
     enabled: true
     hostname: ftsdb
   ftsdbHost: ftsdb
 
 ftsOidc:
-  enabled: false
+  enabled: true
   fullnameOverride: fts-oidc
   oidc:
     enabled: true
@@ -243,7 +216,7 @@ ftsOidc:
 # ===========================================================================
 
 keycloak:
-  enabled: false   # only needed for OIDC flows
+  enabled: true   # only needed for OIDC flows
   fullnameOverride: keycloak
 
 # ===========================================================================
@@ -260,11 +233,11 @@ xrd2:
   fullnameOverride: xrd2
 
 xrd3:
-  enabled: false
+  enabled: true
   fullnameOverride: xrd3
 
 xrd4:
-  enabled: false
+  enabled: true
   fullnameOverride: xrd4
 
 # ===========================================================================
@@ -292,7 +265,7 @@ webdav2:
 # ===========================================================================
 
 storm1:
-  enabled: false
+  enabled: true
   fullnameOverride: storm1
   certFiles:
     hostcert: storm1cert.pem
@@ -301,7 +274,7 @@ storm1:
     issuer: https://storm1:8443
 
 storm2:
-  enabled: false
+  enabled: true
   fullnameOverride: storm2
   certFiles:
     hostcert: storm2cert.pem
@@ -314,11 +287,11 @@ storm2:
 # ===========================================================================
 
 minio1:
-  enabled: false
+  enabled: true
   fullnameOverride: minio1
 
 minio2:
-  enabled: false
+  enabled: true
   fullnameOverride: minio2
 
 # ===========================================================================

@@ -1,7 +1,7 @@
 # StoRM WebDAV — installed twice by umbrella (storm1, storm2).
 
 image:
-  repository: ghcr.io/italiangrid/storm-webdav
+  repository: mgajekcern/storm-webdav
   tag: v1.12.0
   pullPolicy: IfNotPresent
 
