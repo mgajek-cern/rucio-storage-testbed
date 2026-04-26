@@ -409,15 +409,6 @@ services:
       - ${TESTBED_HOST_SOURCE}/shared/config/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
       - ${TESTBED_HOST_SOURCE}/certs/keycloakcert.pem:/etc/x509/https/keycloakcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/keycloakkey.pem:/etc/x509/https/keycloakkey.pem:ro
-    healthcheck:
-      # Use HTTPS so we know TLS is actually serving, not just HTTP.
-      # --no-check-certificate because the cert is signed by the rucio
-      # dev CA, not a public CA — wget inside the keycloak image doesn't
-      # have it in its trust store, and that's fine for liveness.
-      test: ["CMD-SHELL", "curl -sk --fail https://localhost:8443/health/ready || exit 1"]
-      interval: 10s
-      timeout: 10s
-      start_period: 120s
 
   ruciodb:
     image: postgres:14

@@ -53,5 +53,5 @@ dependencies:
 - name: rucio-client
   repository: file://../rucio-client
   version: 0.1.0
-digest: sha256:8a668b10420d6a80abf6e5a9261732ada51261fa7f4a0b1ec0e3de194a0c6c6f
-generated: "2026-04-25T18:55:48.547530501Z"
+digest: sha256:35c8554bb265375069ebdc23e7862affb8e9300590052d88444f3d8886c7b783
+generated: "2026-04-25T19:38:35.805669508Z"

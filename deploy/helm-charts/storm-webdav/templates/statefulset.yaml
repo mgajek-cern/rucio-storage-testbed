@@ -95,14 +95,14 @@ spec:
               mountPath: /storage/data
             - name: vomsdir
               mountPath: /etc/grid-security/vomsdir
-          readinessProbe:
-            httpGet:
-              path: /.storm-webdav/actuator/health
-              port: http
-            initialDelaySeconds: 90
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 20
+          # readinessProbe:
+          #   httpGet:
+          #     path: /.storm-webdav/actuator/health
+          #     port: http
+          #   initialDelaySeconds: 90
+          #   periodSeconds: 10
+          #   timeoutSeconds: 5
+          #   failureThreshold: 20
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:

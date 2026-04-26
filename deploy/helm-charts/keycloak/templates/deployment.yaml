@@ -61,11 +61,11 @@ spec:
               mountPath: /opt/keycloak/data/import/realm.json
               subPath: realm.json
               readOnly: true
-          readinessProbe:
-            exec:
-              command: ["sh", "-c", "curl -sk --fail https://localhost:8443/health/ready || exit 1"]
-            initialDelaySeconds: 60
-            periodSeconds: 10
+          # readinessProbe:
+          #   exec:
+          #     command: ["sh", "-c", "curl -sk --fail https://localhost:8443/health/ready || exit 1"]
+          #   initialDelaySeconds: 60
+          #   periodSeconds: 10
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:

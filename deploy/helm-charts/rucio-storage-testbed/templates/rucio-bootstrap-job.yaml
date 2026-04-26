@@ -1,0 +1,126 @@
+{{- /*
+  Bootstrap Jobs for the two Rucio servers.
+
+  Each Job runs `bootstrap-db.py` against its respective Postgres backend
+  (ruciodb / ruciodb-oidc) once per `helm install` / `helm upgrade`, with
+  helm.sh/hook annotations so it's run before the rucio Deployments start
+  serving traffic. Idempotent: bootstrap-db.py handles "schema exists"
+  gracefully.
+
+  The Job uses the same Secret as the rucio-server Deployment for its
+  rucio.cfg / alembic.ini, and pulls bootstrap-db.py from the
+  testbed-scripts-rucio ConfigMap.
+*/}}
+
+{{- if .Values.rucio.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rucio-bootstrap-db
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: bootstrap
+          image: "{{ .Values.rucio.image.repository }}:{{ .Values.rucio.image.tag }}"
+          imagePullPolicy: {{ .Values.rucio.image.pullPolicy | default "IfNotPresent" }}
+          command:
+            - bash
+            - -c
+            - |
+              set -e
+              # Wait until ruciodb's Postgres port answers.
+              for i in $(seq 1 30); do
+                if python3 -c "import socket; socket.create_connection(('${DB_HOST}', 5432), timeout=2).close()" 2>/dev/null; then
+                  echo "  ✓ ${DB_HOST} reachable"
+                  break
+                fi
+                echo "  [$i] waiting for ${DB_HOST}..."
+                sleep 5
+              done
+              python3 /scripts/bootstrap-db.py
+          env:
+            - name: DB_HOST
+              value: ruciodb
+          volumeMounts:
+            - name: rucio-cfg
+              mountPath: /opt/rucio/etc/rucio.cfg
+              subPath: server.cfg
+            - name: rucio-cfg
+              mountPath: /opt/rucio/etc/alembic.ini
+              subPath: alembic.ini
+            - name: bootstrap
+              mountPath: /scripts
+      volumes:
+        - name: rucio-cfg
+          secret:
+            secretName: rucio-server-cfg
+        - name: bootstrap
+          configMap:
+            name: testbed-scripts-rucio
+            defaultMode: 0755
+{{- end }}
+{{- if (index .Values "rucio-oidc").enabled }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rucio-oidc-bootstrap-db
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: bootstrap
+          image: "{{ (index .Values "rucio-oidc").image.repository }}:{{ (index .Values "rucio-oidc").image.tag }}"
+          imagePullPolicy: {{ (index .Values "rucio-oidc").image.pullPolicy | default "IfNotPresent" }}
+          command:
+            - bash
+            - -c
+            - |
+              set -e
+              # Wait until ruciodb's Postgres port answers.
+              for i in $(seq 1 30); do
+                if python3 -c "import socket; socket.create_connection(('${DB_HOST}', 5432), timeout=2).close()" 2>/dev/null; then
+                  echo "  ✓ ${DB_HOST} reachable"
+                  break
+                fi
+                echo "  [$i] waiting for ${DB_HOST}..."
+                sleep 5
+              done
+              python3 /scripts/bootstrap-db.py
+          env:
+            - name: DB_HOST
+              value: ruciodb-oidc
+          volumeMounts:
+            - name: rucio-cfg
+              mountPath: /opt/rucio/etc/rucio.cfg
+              subPath: oidc-server.cfg
+            - name: rucio-cfg
+              mountPath: /opt/rucio/etc/alembic.ini
+              subPath: alembic-oidc.ini
+            - name: rucio-cfg
+              mountPath: /opt/rucio/etc/idpsecrets.json
+              subPath: idpsecrets.json
+            - name: bootstrap
+              mountPath: /scripts
+      volumes:
+        - name: rucio-cfg
+          secret:
+            secretName: rucio-oidc-server-cfg
+        - name: bootstrap
+          configMap:
+            name: testbed-scripts-rucio
+            defaultMode: 0755
+{{- end }}

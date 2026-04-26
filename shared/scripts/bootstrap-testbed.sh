@@ -1,35 +1,113 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
 
-# ── Global Config ───────────────────────────────────────────────────────────
-RUCIO="compose-rucio-1"
-RUCIO_OIDC="compose-rucio-oidc-1"
+# ── Runtime selection ──────────────────────────────────────────────────────
+# Set RUNTIME=compose or RUNTIME=k8s. Defaults to compose so existing
+# muscle memory keeps working.
+RUNTIME="${RUNTIME:-compose}"
+K8S_NAMESPACE="${K8S_NAMESPACE:-rucio-testbed}"
+
+# ── Service identifiers ────────────────────────────────────────────────────
+# Each service has two names: how docker compose addresses it, and how
+# kubectl addresses it (workload + container). Service DNS names inside
+# the cluster (rucio, fts, keycloak, …) are identical to the compose
+# service names by design — see the umbrella chart README.
 FTS="https://fts:8446"
 FTS_OIDC="https://fts-oidc:8446"
 
-# Get the directory where the script lives, then go up to find the compose file
+# ── Cross-runtime helpers ──────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-
-# Find which compose file to use (default to .yml, fallback to .ci.yml)
 COMPOSE_FILE="$PROJECT_ROOT/deploy/compose/docker-compose.yml"
 
-ra()      { docker exec "$RUCIO"      rucio-admin -S userpass -u ddmlab --password secret "$@"; }
-ra_oidc() { docker exec "$RUCIO_OIDC" rucio-admin -S userpass -u ddmlab --password secret "$@"; }
+# _exec <service> -- <command…>
+#
+# In compose mode: docker exec compose-<service>-1 <command…>
+# In k8s mode:     kubectl exec deploy/<service> -c <service> -- <command…>
+#
+# The container name in our k8s setup matches the deployment name for the
+# main app container (rucio, rucio-oidc, fts, fts-oidc, etc.). For pods
+# with sidecars (rucio, rucio-oidc) this hits the rucio app container.
+_exec() {
+    local svc=$1; shift
+    case "$RUNTIME" in
+        compose)
+            docker exec "compose-${svc}-1" "$@"
+            ;;
+        k8s)
+            local target
+            local -a cflag=()
+            case "$svc" in
+                # StatefulSets (single-container pods, name varies by chart).
+                ftsdb|ftsdb-oidc|ruciodb|ruciodb-oidc|storm1|storm2|minio1|minio2)
+                    target="pod/${svc}-0"
+                    ;;
+                # Deployments with a sidecar — must specify which container.
+                rucio|rucio-oidc)
+                    target="deploy/${svc}"
+                    cflag=(-c "$svc")
+                    ;;
+                # All other Deployments are single-container pods.
+                *)
+                    target="deploy/${svc}"
+                    ;;
+            esac
+            kubectl -n "$K8S_NAMESPACE" exec "$target" "${cflag[@]}" -- "$@"
+            ;;
+        *) echo "Unknown RUNTIME: $RUNTIME" >&2; exit 1 ;;
+    esac
+}
+
+# _restart <service…>  — graceful restart of one or more services
+_restart() {
+    case "$RUNTIME" in
+        compose)
+            docker compose -f "$COMPOSE_FILE" restart "$@" ;;
+        k8s)
+            for svc in "$@"; do
+                local target
+                case "$svc" in
+                    storm1|storm2|minio1|minio2|ftsdb*|ruciodb*)
+                        target="statefulset/${svc}" ;;
+                    *)
+                        target="deploy/${svc}" ;;
+                esac
+                kubectl -n "$K8S_NAMESPACE" rollout restart "$target"
+                kubectl -n "$K8S_NAMESPACE" rollout status  "$target" --timeout=120s
+            done ;;
+    esac
+}
+
+# _http_probe_local <port> <path>  — probe rucio-oidc from the test runner
+# In compose: hits localhost (port mapping). In k8s: uses kubectl port-forward.
+# Returns the HTTP status code.
+_http_probe_local() {
+    local port=$1 path=$2
+    case "$RUNTIME" in
+        compose)
+            curl -s -o /dev/null -w '%{http_code}' "http://localhost:${port}${path}" || true ;;
+        k8s)
+            _exec rucio-oidc curl -s -o /dev/null -w '%{http_code}' \
+                "http://localhost${path}" 2>/dev/null || true ;;
+    esac
+}
+
+# Convenience wrappers
+ra()      { _exec rucio      rucio-admin -S userpass -u ddmlab --password secret "$@"; }
+ra_oidc() { _exec rucio-oidc rucio-admin -S userpass -u ddmlab --password secret "$@"; }
 
 # ── Infrastructure Readiness ────────────────────────────────────────────────
 
 wait_for_infrastructure() {
     echo "=== Waiting for Rucio and Keycloak ==="
     for i in $(seq 1 30); do
-        code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8090/ping 2>/dev/null) || true
+        code=$(_http_probe_local 8090 /ping)
         [[ "$code" == "200" ]] && { echo "  ✓ rucio-oidc ready"; break; }
         echo "  [$i] rucio-oidc HTTP $code — waiting..."; sleep 5
     done
 
     for i in $(seq 1 30); do
-        code=$(docker exec "$RUCIO_OIDC" curl -s -o /dev/null -w '%{http_code}' \
+        code=$(_exec rucio-oidc curl -s -o /dev/null -w '%{http_code}' \
             https://keycloak:8443/realms/rucio/.well-known/openid-configuration 2>/dev/null) || true
         [[ "$code" == "200" ]] && { echo "  ✓ Keycloak ready"; break; }
         echo "  [$i] Keycloak HTTP $code — waiting..."; sleep 5
@@ -39,19 +117,24 @@ wait_for_infrastructure() {
 restart_storm_nodes() {
     local label=$1
     echo "=== Restarting StoRM ($label) ==="
+    _restart storm1 storm2
 
-    docker compose -f "$COMPOSE_FILE" restart storm1 storm2
-
-    echo "  Waiting for StoRM health checks..."
-    for i in $(seq 1 20); do
-        s1=$(docker inspect --format='{{.State.Health.Status}}' compose-storm1-1 2>/dev/null || echo "unknown")
-        s2=$(docker inspect --format='{{.State.Health.Status}}' compose-storm2-1 2>/dev/null || echo "unknown")
-        if [[ "$s1" == "healthy" && "$s2" == "healthy" ]]; then
-            echo "  ✓ All StoRM nodes healthy"
-            return 0
-        fi
-        echo "  [$i] storm1=$s1 storm2=$s2 — waiting..."; sleep 10
-    done
+    case "$RUNTIME" in
+        compose)
+            echo "  Waiting for StoRM health checks..."
+            for i in $(seq 1 20); do
+                s1=$(docker inspect --format='{{.State.Health.Status}}' compose-storm1-1 2>/dev/null || echo unknown)
+                s2=$(docker inspect --format='{{.State.Health.Status}}' compose-storm2-1 2>/dev/null || echo unknown)
+                if [[ "$s1" == "healthy" && "$s2" == "healthy" ]]; then
+                    echo "  ✓ All StoRM nodes healthy"; return 0
+                fi
+                echo "  [$i] storm1=$s1 storm2=$s2 — waiting..."; sleep 10
+            done ;;
+        k8s)
+            # _restart already waited via `kubectl rollout status`.
+            echo "  ✓ StoRM rollouts complete"
+            ;;
+    esac
 }
 
 # ── Identity & Account Setup ───────────────────────────────────────────────
@@ -74,7 +157,7 @@ setup_accounts_and_identities() {
     echo "  Verifying Keycloak token endpoint..."
     AUTH=$(echo -n "rucio-oidc:rucio-oidc-secret" | base64)
     for i in $(seq 1 12); do
-        code=$(docker exec "$RUCIO_OIDC" curl -s -o /dev/null -w '%{http_code}' \
+        code=$(_exec rucio-oidc curl -s -o /dev/null -w '%{http_code}' \
             -X POST https://keycloak:8443/realms/rucio/protocol/openid-connect/token \
             -H "Authorization: Basic $AUTH" -d "grant_type=password&username=randomaccount&password=secret" 2>/dev/null) || true
         [[ "$code" == "200" ]] && break
@@ -82,7 +165,7 @@ setup_accounts_and_identities() {
     done
 
     echo "  Registering OIDC identity for randomaccount..."
-    docker exec "$RUCIO_OIDC" python3 -c "
+    _exec rucio-oidc python3 -c "
 import urllib.request, urllib.parse, json, base64
 from rucio.core.identity import add_identity, add_account_identity
 from rucio.common.types import InternalAccount
@@ -195,16 +278,17 @@ configure_rses() {
 
 setup_fts_oidc_provider() {
     echo "=== Registering Keycloak in FTS Database ==="
-    docker exec compose-ftsdb-oidc-1 mysql -ufts -pfts fts -e "
+    _exec ftsdb-oidc mysql -ufts -pfts fts -e "
     INSERT IGNORE INTO t_token_provider (name, issuer, client_id, client_secret)
     VALUES
       ('keycloak-rucio',       'https://keycloak:8443/realms/rucio',  'rucio-oidc', 'rucio-oidc-secret'),
       ('keycloak-rucio-slash', 'https://keycloak:8443/realms/rucio/', 'rucio-oidc', 'rucio-oidc-secret');"
 
     echo "  Restarting fts-oidc..."
-    docker compose -f "$COMPOSE_FILE" restart fts-oidc
+    _restart fts-oidc
     for i in $(seq 1 30); do
-        code=$(docker exec compose-fts-oidc-1 curl -sk -o /dev/null -w '%{http_code}' https://localhost:8446/whoami 2>/dev/null) || code=0
+        code=$(_exec fts-oidc curl -sk -o /dev/null -w '%{http_code}' \
+            https://localhost:8446/whoami 2>/dev/null) || code=0
         [[ "$code" == "200" || "$code" == "403" ]] && { echo "  ✓ fts-oidc ready"; break; }
         sleep 5
     done
@@ -213,7 +297,7 @@ setup_fts_oidc_provider() {
 delegate_gsi_proxies() {
     echo "=== Delegating GSI proxies to FTS ==="
     for url in "$FTS" "$FTS_OIDC"; do
-        docker exec compose-fts-1 python3 -c "
+        _exec fts python3 -c "
 import datetime, fts3.rest.client.easy as fts3
 ctx = fts3.Context('$url', ucert='/etc/grid-security/hostcert.pem', ukey='/etc/grid-security/hostkey.pem', verify=False)
 fts3.delegate(ctx, lifetime=datetime.timedelta(hours=48), force=True)

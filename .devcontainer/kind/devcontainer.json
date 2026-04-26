@@ -7,6 +7,16 @@
       "ghcr.io/devcontainers/features/python:1": {},
       "ghcr.io/prulloac/devcontainer-features/pre-commit:1": {}
     },
+    "forwardPorts": [
+        8446, 8449,
+        8447,
+        3306,
+        1094, 1095, 1096, 1097,
+        9000, 9001,
+        9002, 9003,
+        8080, 8448,
+        8070
+    ],
     "postCreateCommand": "bash .devcontainer/kind/setup.sh",
     "remoteUser": "root",
     "privileged": true,

@@ -91,7 +91,6 @@ rucio:
   replicaCount: 1
   image:
     repository: rucio/rucio-server
-    # Pinned digest from compose:
     tag: release-40.0.0
     pullPolicy: IfNotPresent
   useSSL: false
@@ -100,7 +99,6 @@ rucio:
     port: 80
     targetPort: 80
   useDeprecatedImplicitSecrets: false
-  # Mount our managed configs/certs/scripts into the server pod.
   secretMounts:
     - secretFullName: testbed-certs
       volumeName: certs-hostcert
