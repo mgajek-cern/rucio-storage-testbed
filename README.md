@@ -63,6 +63,7 @@ make test-all-k8s
 
 ```bash
 make help
+...
   help                       Show this help (default target)
 
 Setup
@@ -95,6 +96,8 @@ Tests
   test-storm                 StoRM WebDAV TPC test with OIDC tokens
   test-webdav                WebDAV TPC test with X.509 GSI
   test-s3                    S3/MinIO test with signed URLs
+  test-all                   Run all tests (in series)
+  test-all-k8s               Run all tests against a Kubernetes deployment (set RUNTIME=k8s to target k8s)
 
 Development
   lint                       Run pre-commit hooks on all files

@@ -142,11 +142,18 @@ test-webdav: ## WebDAV TPC test with X.509 GSI
 test-s3: ## S3/MinIO test with signed URLs
 	./shared/scripts/test-fts-with-s3.sh
 
-.PHONY: test-all ### Run all tests (in series)
-test-all: test-xrootd-gsi test-s3 test-webdav test-storm test-xrootd-oidc test-rucio test-rucio-python
+.PHONY: test-all
+test-all: ## Run all tests (in series)
+	$(MAKE) test-xrootd-gsi
+	$(MAKE) test-s3
+	$(MAKE) test-webdav
+	$(MAKE) test-storm
+	$(MAKE) test-xrootd-oidc
+	$(MAKE) test-rucio
+	$(MAKE) test-rucio-python
 
-.PHONY: test-all-k8s ## Run all tests against a Kubernetes deployment (set RUNTIME=k8s to target k8s)
-test-all-k8s:
+.PHONY: test-all-k8s
+test-all-k8s: ## Run all tests against a Kubernetes deployment (set RUNTIME=k8s to target k8s)
 	$(MAKE) test-all RUNTIME=k8s
 
 ## Development
