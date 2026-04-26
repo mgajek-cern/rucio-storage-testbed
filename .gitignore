@@ -10,3 +10,5 @@ storm-cacerts
 trustanchors
 !rucio_ca.key.pem
 !rucio_ca.pem
+__pycache__
+.pytest_cache

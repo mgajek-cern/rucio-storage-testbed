@@ -4,22 +4,20 @@ Python equivalent of test-rucio-transfers.sh — runs the same three scenarios
 (XRootD GSI, StoRM OIDC, XRootD OIDC) using the Rucio Python client.
 
 Typical invocations:
-    # Inside the rucio-client container (compose) — defaults are correct:
     docker exec compose-rucio-client-1 \\
-        python3 /scripts/test-rucio-transfers.py
+        bash -c "pytest -v /scripts/test-rucio-transfers.py"
 
-    # Inside the rucio-client pod (k8s):
     kubectl -n rucio-testbed exec deploy/rucio-client -- \\
-        python3 /scripts/test-rucio-transfers.py
+        bash -c "pytest -v /scripts/test-rucio-transfers.py"
 """
 
 import logging
 import re
 import subprocess
-import sys
 import time
 import zlib
-from typing import Tuple
+
+import pytest
 
 from rucio.client import Client
 from rucio.common.config import get_config
@@ -27,19 +25,14 @@ from rucio.common.exception import Duplicate, RucioException, RuleNotFound
 from rucio.rse import rsemanager as rsemgr
 
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)-7s %(message)s",
-    datefmt="%H:%M:%S",
-)
 log = logging.getLogger("rucio-transfers")
 
 
 # ── Topology ───────────────────────────────────────────────────────────────
-CLIENT = "compose-rucio-client-1"
 RUCIO = "compose-rucio-1"
 RUCIO_OIDC = "compose-rucio-oidc-1"
 XRD1 = "compose-xrd1-1"
+XRD2 = "compose-xrd2-1"
 XRD3 = "compose-xrd3-1"
 XRD4 = "compose-xrd4-1"
 STORM1 = "compose-storm1-1"
@@ -50,13 +43,11 @@ CFG_STD = "/opt/rucio/etc/userpass-client.cfg"
 CFG_OIDC = "/opt/rucio/etc/userpass-client-for-rucio-oidc.cfg"
 
 
+# ── Client factory ─────────────────────────────────────────────────────────
 def _client(cfg_path: str) -> Client:
-    # Load the specific config file into a local object
     conf = get_config()
     conf.read(cfg_path)
-
     rucio_host = conf.get("client", "rucio_host")
-    # Extract the connection info from the [client] section of your .cfg
     c = Client(
         rucio_host=rucio_host,
         auth_host=conf.get("client", "auth_host"),
@@ -68,29 +59,49 @@ def _client(cfg_path: str) -> Client:
         },
         vo=conf.get("client", "vo", fallback="def"),
     )
-
-    log.info("  Connected to Rucio at %s (VO: %s)", rucio_host, c.vo)
+    log.info("Connected to Rucio at %s (VO: %s)", rucio_host, c.vo)
     return c
 
 
-def docker_exec(
-    container: str,
-    cmd: list,
-    user: str = None,
-    stdin: bytes = None,
-    capture: bool = True,
-) -> bytes:
+# ── Fixtures ───────────────────────────────────────────────────────────────
+@pytest.fixture(scope="session")
+def client_std():
+    return _client(CFG_STD)
+
+
+@pytest.fixture(scope="session")
+def client_oidc():
+    return _client(CFG_OIDC)
+
+
+@pytest.fixture(scope="session")
+def fts_proxy():
+    """Delegate a host-cert proxy to FTS once per test session."""
+    log.info("=== Delegating proxy to FTS ===")
+    py = (
+        "import datetime, fts3.rest.client.easy as fts3\n"
+        "ctx = fts3.Context('https://fts:8446', "
+        "ucert='/etc/grid-security/hostcert.pem', "
+        "ukey='/etc/grid-security/hostkey.pem', verify=False)\n"
+        "fts3.delegate(ctx, lifetime=datetime.timedelta(hours=48), force=True)\n"
+        "print('Delegation OK - DN:', fts3.whoami(ctx)['user_dn'])"
+    )
+    out = docker_exec(FTS, ["python3", "-c", py])
+    log.info("  %s", out.decode().strip())
+
+
+# ── Docker helper ───────────────────────────────────────────────────────────
+def docker_exec(container: str, cmd: list, user: str = None) -> bytes:
     full = ["docker", "exec"]
     if user:
         full += ["--user", user]
-    if stdin is not None:
-        full += ["-i"]
     full += [container] + cmd
-    result = subprocess.run(full, input=stdin, capture_output=capture, check=True)
-    return result.stdout if capture else b""
+    result = subprocess.run(full, capture_output=True, check=True)
+    return result.stdout
 
 
-def compute_metadata_from_storage(storage_ctr: str, fpath: str) -> Tuple[int, str]:
+# ── Storage helpers ─────────────────────────────────────────────────────────
+def compute_metadata_from_storage(storage_ctr: str, fpath: str):
     raw = docker_exec(storage_ctr, ["cat", fpath])
     size = len(raw)
     if size == 0:
@@ -116,7 +127,7 @@ def pfn_to_local_path(rse: str, pfn: str) -> str:
     return re.sub(r"^/+", "/", s)
 
 
-def seed_file(storage_ctr: str, fpath: str, owner: str) -> None:
+def seed_file(storage_ctr: str, fpath: str, owner: str):
     script = (
         "set -e; "
         f'mkdir -p "$(dirname {fpath})"; '
@@ -128,9 +139,15 @@ def seed_file(storage_ctr: str, fpath: str, owner: str) -> None:
     log.info("  %s", out.decode().strip())
 
 
-def register_replica(
-    client: Client, rse: str, scope: str, name: str, pfn: str, size: int, adler32: str
-) -> None:
+def prepare_dest_dir(storage_ctr: str, fpath: str, owner: str):
+    script = (
+        f'mkdir -p "$(dirname {fpath})" && chown {owner}:{owner} "$(dirname {fpath})"'
+    )
+    docker_exec(storage_ctr, ["sh", "-c", script], user="root")
+    log.info("  ✓ Destination dir ready on %s: %s", storage_ctr, fpath)
+
+
+def register_replica(client, rse, scope, name, pfn, size, adler32):
     log.info(
         "  Registering %s:%s at %s (bytes=%d adler32=%s)",
         scope,
@@ -160,18 +177,18 @@ def register_replica(
         raise
 
 
-def add_rule(client: Client, scope: str, name: str, dst_rse: str) -> str:
+def add_rule(client, scope, name, dst_rse):
     rule_ids = client.add_replication_rule(
         dids=[{"scope": scope, "name": name}],
         copies=1,
         rse_expression=dst_rse,
     )
     rule_id = rule_ids[0]
-    log.info("  ✓ Rule created: %s", rule_id)
+    log.info("  ✓ Rule created: %s -> %s (%s)", name, dst_rse, rule_id)
     return rule_id
 
 
-def run_daemons(rucio_ctr: str) -> None:
+def run_daemons(rucio_ctr: str):
     log.info("=== Running daemons on %s ===", rucio_ctr)
     for daemon in (
         ["rucio-judge-evaluator", "--run-once"],
@@ -179,14 +196,12 @@ def run_daemons(rucio_ctr: str) -> None:
         ["rucio-conveyor-poller", "--run-once", "--older-than", "0"],
         ["rucio-conveyor-finisher", "--run-once"],
     ):
-        docker_exec(rucio_ctr, daemon, capture=False)
+        log.info("  → %s", " ".join(daemon))
+        docker_exec(rucio_ctr, daemon)
 
 
-def validate_rule(
-    client: Client, rule_id: str, label: str, rucio_ctr: str, timeout: int = 180
-) -> None:
-    """Poll the rule until locks_ok >= 1 and locks_replicating == 0.
-    Each loop iteration advances the daemon cycle so transfers progress."""
+def validate_rule(client, rule_id, label, rucio_ctr, timeout=180):
+    """Poll until locks_ok >= 1 and locks_replicating == 0; advance daemons each loop."""
     log.info("=== Validating rule %s (%s) ===", rule_id, label)
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -209,121 +224,85 @@ def validate_rule(
 
         log.info("  (running daemon cycle to advance transfer)")
         docker_exec(
-            rucio_ctr,
-            ["rucio-conveyor-poller", "--run-once", "--older-than", "0"],
-            capture=False,
+            rucio_ctr, ["rucio-conveyor-poller", "--run-once", "--older-than", "0"]
         )
-        docker_exec(rucio_ctr, ["rucio-conveyor-finisher", "--run-once"], capture=False)
+        docker_exec(rucio_ctr, ["rucio-conveyor-finisher", "--run-once"])
         time.sleep(5)
 
     raise TimeoutError(f"Rule {rule_id} did not converge within {timeout}s")
 
 
-def delegate_proxy() -> None:
-    log.info("=== Delegating proxy to FTS ===")
-    py = (
-        "import datetime, fts3.rest.client.easy as fts3\n"
-        "ctx = fts3.Context('https://fts:8446', "
-        "ucert='/etc/grid-security/hostcert.pem', "
-        "ukey='/etc/grid-security/hostkey.pem', verify=False)\n"
-        "fts3.delegate(ctx, lifetime=datetime.timedelta(hours=48), force=True)\n"
-        "print('  Delegation OK - DN:', fts3.whoami(ctx)['user_dn'])"
-    )
-    docker_exec(FTS, ["python3", "-c", py], capture=False)
-
-
-def seed_and_register(
-    client: Client, rse: str, scope: str, name: str, storage_ctr: str, owner: str
-) -> None:
+def seed_and_register(client, rse, scope, name, storage_ctr, owner):
     pfn = compute_pfn(client, rse, scope, name)
-    local_fpath = pfn_to_local_path(rse, pfn)
+    local = pfn_to_local_path(rse, pfn)
     log.info("  PFN:            %s", pfn)
-    log.info("  Container path: %s", local_fpath)
+    log.info("  Container path: %s", local)
 
-    seed_file(storage_ctr, local_fpath, owner)
-    size, adler32 = compute_metadata_from_storage(storage_ctr, local_fpath)
+    seed_file(storage_ctr, local, owner)
+    size, adler32 = compute_metadata_from_storage(storage_ctr, local)
     register_replica(client, rse, scope, name, pfn, size, adler32)
 
 
-def test_xrootd_gsi() -> None:
-    log.info("\n[ Test: XRootD GSI (XRD1 -> XRD2) ]")
-    delegate_proxy()
-    client = _client(CFG_STD)
+def transfer_workflow(
+    client, src_rse, dst_rse, src_ctr, dst_ctr, scope, name, rucio_ctr, owner, label
+):
+    log.info("[ Test: %s (%s -> %s) ]", label, src_rse, dst_rse)
+
+    seed_and_register(client, src_rse, scope, name, src_ctr, owner)
+
+    dst_pfn = compute_pfn(client, dst_rse, scope, name)
+    dst_path = pfn_to_local_path(dst_rse, dst_pfn)
+    prepare_dest_dir(dst_ctr, dst_path, owner)
+
+    rule_id = add_rule(client, scope, name, dst_rse)
+    run_daemons(rucio_ctr)
+    validate_rule(client, rule_id, label, rucio_ctr)
+
+
+# ── Tests ──────────────────────────────────────────────────────────────────
+def test_xrootd_gsi(client_std, fts_proxy):
     scope, name = "ddmlab", f"gsi-{int(time.time())}"
-    seed_and_register(client, "XRD1", scope, name, XRD1, "xrootd")
-    rule_id = add_rule(client, scope, name, "XRD2")
-    run_daemons(RUCIO)
-    validate_rule(client, rule_id, "XRootD GSI", RUCIO)
+    transfer_workflow(
+        client_std,
+        src_rse="XRD1",
+        dst_rse="XRD2",
+        src_ctr=XRD1,
+        dst_ctr=XRD2,
+        scope=scope,
+        name=name,
+        rucio_ctr=RUCIO,
+        owner="xrootd",
+        label="XRootD GSI",
+    )
 
 
-def test_storm_oidc() -> None:
-    log.info("\n[ Test: StoRM OIDC (STORM1 -> STORM2) ]")
-    client = _client(CFG_OIDC)
+def test_storm_oidc(client_oidc):
     scope, name = "ddmlab", f"storm-{int(time.time())}"
-
-    dest_pfn = compute_pfn(client, "STORM2", scope, name)
-    dest_fpath = pfn_to_local_path("STORM2", dest_pfn)
-    docker_exec(
-        STORM2,
-        [
-            "sh",
-            "-c",
-            f"mkdir -p $(dirname {dest_fpath}) && "
-            f"chown -R storm:storm /storage/data/{scope}",
-        ],
-        user="root",
+    transfer_workflow(
+        client_oidc,
+        src_rse="STORM1",
+        dst_rse="STORM2",
+        src_ctr=STORM1,
+        dst_ctr=STORM2,
+        scope=scope,
+        name=name,
+        rucio_ctr=RUCIO_OIDC,
+        owner="storm",
+        label="StoRM OIDC",
     )
 
-    seed_and_register(client, "STORM1", scope, name, STORM1, "storm")
-    rule_id = add_rule(client, scope, name, "STORM2")
-    run_daemons(RUCIO_OIDC)
-    validate_rule(client, rule_id, "StoRM OIDC", RUCIO_OIDC)
 
-
-def test_xrootd_oidc() -> None:
-    log.info("\n[ Test: XRootD OIDC (XRD3 -> XRD4) ]")
-    client = _client(CFG_OIDC)
+def test_xrootd_oidc(client_oidc):
     scope, name = "ddmlab", f"xrd-oidc-{int(time.time())}"
-
-    dest_pfn = compute_pfn(client, "XRD4", scope, name)
-    dest_fpath = pfn_to_local_path("XRD4", dest_pfn)
-    docker_exec(
-        XRD4,
-        [
-            "sh",
-            "-c",
-            f"mkdir -p $(dirname {dest_fpath}) && "
-            f"chown xrootd:xrootd $(dirname {dest_fpath})",
-        ],
-        user="root",
+    transfer_workflow(
+        client_oidc,
+        src_rse="XRD3",
+        dst_rse="XRD4",
+        src_ctr=XRD3,
+        dst_ctr=XRD4,
+        scope=scope,
+        name=name,
+        rucio_ctr=RUCIO_OIDC,
+        owner="xrootd",
+        label="XRootD OIDC",
     )
-
-    seed_and_register(client, "XRD3", scope, name, XRD3, "xrootd")
-    rule_id = add_rule(client, scope, name, "XRD4")
-    run_daemons(RUCIO_OIDC)
-    validate_rule(client, rule_id, "XRootD OIDC", RUCIO_OIDC)
-
-
-def main() -> int:
-    tests = [
-        ("XRootD GSI", test_xrootd_gsi),
-        ("StoRM OIDC", test_storm_oidc),
-        ("XRootD OIDC", test_xrootd_oidc),
-    ]
-    failures = []
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception as e:
-            log.error("✗ %s failed: %s", name, e)
-            failures.append(name)
-
-    if failures:
-        log.error("\nFAILED: %s", ", ".join(failures))
-        return 1
-    log.info("\nAll tests passed ✓")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

@@ -539,7 +539,16 @@ services:
       - ${TESTBED_HOST_SOURCE}/shared/config/rucio/userpass-client-for-rucio-oidc.cfg:/opt/rucio/etc/userpass-client-for-rucio-oidc.cfg:ro
       - ${TESTBED_HOST_SOURCE}/shared/scripts:/scripts:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    command: ["/bin/bash", "-c", "while true; do sleep 60; done"]
+    command:
+      - /bin/bash
+      - -c
+      - |
+        pip install --no-cache-dir \
+          --trusted-host pypi.org \
+          --trusted-host pypi.python.org \
+          --trusted-host files.pythonhosted.org \
+          pytest &&
+        sleep infinity
 
 networks:
   rucio-storage-testbed:

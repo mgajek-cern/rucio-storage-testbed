@@ -1,103 +1,115 @@
 #!/usr/bin/env python3
 """
-test-fts-with-xrootd.py — test FTS3 REST API end-to-end using the fts3 Python REST client.
-
-Runtime-agnostic: this script only talks to FTS over HTTPS, no docker/kubectl
-required. It can be invoked from any context that has:
-  - fts3 + M2Crypto installed
-  - a usable client cert/key pair
-  - network reachability to the FTS endpoint
-
-Configuration (all overridable via env vars):
-  FTS   FTS REST endpoint (default: https://localhost:8446)
-  CERT  Client cert path  (default: /etc/grid-security/hostcert.pem)
-  KEY   Client key path   (default: /etc/grid-security/hostkey.pem)
-  SRC   Source URL        (default: root://xrd1//rucio/fts-test-file)
-  DST   Destination URL   (default: root://xrd2//rucio/fts-test-file)
+test-fts-with-xrootd.py — test FTS3 REST API end-to-end using the fts3
+Python REST client.
 
 Typical invocations:
+    docker exec compose-fts-1 \\
+        bash -c "pytest -v /scripts/test-fts-with-xrootd.py"
 
-  # Inside the FTS container (compose) — defaults are correct:
-  docker exec compose-fts-1 python3 /scripts/test-fts-with-xrootd.py
-
-  # Inside the FTS pod (k8s):
-  kubectl -n rucio-testbed exec deploy/fts -- \\
-      python3 /scripts/test-fts-with-xrootd.py
+    kubectl -n rucio-testbed exec deploy/fts -- \\
+        bash -c "pytest -v /scripts/test-fts-with-xrootd.py"
 """
 
 import datetime
 import json
+import logging
 import os
-import sys
 import time
 
-# ── Configuration ─────────────────────────────────────────────────────────────
+import pytest
+
+try:
+    import fts3.rest.client.easy as fts3
+except ImportError:
+    pytest.skip("fts3 module not available", allow_module_level=True)
+
+
+log = logging.getLogger("test-fts-with-xrootd")
+
+
+# ── Configuration via env ─────────────────────────────────────────────────
 FTS = os.environ.get("FTS", "https://localhost:8446")
 CERT = os.environ.get("CERT", "/etc/grid-security/hostcert.pem")
 KEY = os.environ.get("KEY", "/etc/grid-security/hostkey.pem")
 SRC = os.environ.get("SRC", "root://xrd1//rucio/fts-test-file")
 DST = os.environ.get("DST", "root://xrd2//rucio/fts-test-file")
 
-try:
-    import fts3.rest.client.easy as fts3
-except ImportError:
-    print("ERROR: fts3 module not found. Install with: pip3 install --no-deps fts3")
-    sys.exit(1)
 
-# ── Step 1: create context (handles delegation automatically) ─────────────────
-print("=== Step 1: connect and delegate ===")
-try:
-    context = fts3.Context(endpoint=FTS, ucert=CERT, ukey=KEY, verify=False)
+# ── Fixtures ──────────────────────────────────────────────────────────────
+@pytest.fixture(scope="session")
+def context():
+    log.info("=== Connecting to FTS at %s ===", FTS)
+    ctx = fts3.Context(endpoint=FTS, ucert=CERT, ukey=KEY, verify=False)
+    return ctx
+
+
+@pytest.fixture(scope="session")
+def delegated_context(context):
     whoami = fts3.whoami(context)
-    print(json.dumps(whoami, indent=2))
-    print(f"  DN:      {whoami['user_dn']}")
-    print(f"  is_root: {whoami['is_root']}")
-    print(f"  method:  {whoami['method']}")
-    print("  Delegating proxy...")
-    fts3.delegate(context, lifetime=datetime.timedelta(hours=1), force=True)
-    print("  Delegation OK")
-except Exception as e:
-    print(f"ERROR connecting to FTS: {e}")
-    sys.exit(1)
+    log.info("whoami: %s", json.dumps(whoami, indent=2))
+    log.info("  DN:      %s", whoami["user_dn"])
+    log.info("  is_root: %s", whoami["is_root"])
+    log.info("  method:  %s", whoami["method"])
+    assert "user_dn" in whoami
+    assert whoami["user_dn"]
 
-# ── Step 2: submit transfer xrd1 → xrd2 ──────────────────────────────────────
-print("\n=== Step 2: submit transfer ===")
-print(f"  {SRC} -> {DST}")
-try:
+    log.info("Delegating proxy (lifetime=1h)...")
+    fts3.delegate(context, lifetime=datetime.timedelta(hours=1), force=True)
+    log.info("✓ Delegation OK")
+    return context
+
+
+@pytest.fixture(scope="session")
+def submitted_job(delegated_context):
+    log.info("=== Submitting transfer ===")
+    log.info("  %s -> %s", SRC, DST)
     transfer = fts3.new_transfer(SRC, DST)
     job = fts3.new_job([transfer], overwrite=True, verify_checksum=False)
-    job_id = fts3.submit(context, job)
-    print(f"  Job ID: {job_id}")
-except Exception as e:
-    print(f"ERROR submitting job: {e}")
-    sys.exit(1)
+    job_id = fts3.submit(delegated_context, job)
+    log.info("✓ Job submitted: %s", job_id)
+    assert job_id is not None
+    return job_id
 
-# ── Step 3: poll until terminal state ─────────────────────────────────────────
-print("\n=== Step 3: poll job status ===")
-terminal = {"FINISHED", "FAILED", "CANCELED", "FINISHEDDIRTY"}
-state = "UNKNOWN"
-for i in range(1, 25):
-    time.sleep(5)
-    try:
-        status = fts3.get_job_status(context, job_id, list_files=False)
+
+# ── Tests ─────────────────────────────────────────────────────────────────
+def test_whoami(context):
+    whoami = fts3.whoami(context)
+    log.info("whoami response keys: %s", list(whoami.keys()))
+    assert "user_dn" in whoami
+    assert isinstance(whoami["user_dn"], str)
+    assert "method" in whoami
+
+
+def test_delegate(delegated_context):
+    assert delegated_context is not None
+    log.info("✓ delegated_context fixture established")
+
+
+def test_submit_job(submitted_job):
+    assert submitted_job is not None
+    log.info("✓ Job ID present: %s", submitted_job)
+
+
+def test_job_lifecycle(delegated_context, submitted_job):
+    log.info("=== Polling job %s ===", submitted_job)
+    terminal = {"FINISHED", "FAILED", "CANCELED", "FINISHEDDIRTY"}
+    state = "UNKNOWN"
+
+    for i in range(1, 25):
+        time.sleep(5)
+        status = fts3.get_job_status(delegated_context, submitted_job, list_files=False)
         state = status["job_state"]
-        print(f"  [{i * 5:3d}s] {state}")
+        log.info("  [%3ds] %s", i * 5, state)
         if state in terminal:
             break
-    except Exception as e:
-        print(f"  [{i * 5:3d}s] ERROR polling: {e}")
 
-print(f"\nFinal state: {state}")
+    log.info("Final state: %s", state)
 
-if state == "FINISHED":
-    print("✓ Transfer FINISHED successfully")
-    sys.exit(0)
-else:
-    print("✗ Transfer did not finish successfully")
-    try:
-        files = fts3.get_job_status(context, job_id, list_files=True)
+    if state != "FINISHED":
+        files = fts3.get_job_status(delegated_context, submitted_job, list_files=True)
         for f in files.get("files", []):
-            print(f"  {f['file_state']}: {f.get('reason', '')}")
-    except Exception:
-        pass
-    sys.exit(1)
+            log.error("  %s: %s", f["file_state"], f.get("reason", ""))
+
+    assert state in terminal, "Job never reached a terminal state"
+    assert state == "FINISHED", f"Job failed with state={state}"

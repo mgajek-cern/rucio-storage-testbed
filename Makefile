@@ -120,11 +120,11 @@ test-rucio: ## Rucio E2E transfer test (bash version)
 
 .PHONY: test-rucio-python
 test-rucio-python: ## Rucio E2E transfer test (Python, runs in rucio-client container)
-	$(EXEC_RUCIO) python3 /scripts/test-rucio-transfers.py
+	$(EXEC_RUCIO) bash -c "pytest /scripts/test-rucio-transfers.py"
 
 .PHONY: test-xrootd-gsi
 test-xrootd-gsi: ## XRootD TPC test with X.509 GSI
-	$(EXEC_FTS) python3 /scripts/test-fts-with-xrootd.py
+	$(EXEC_FTS) bash -c "pip install pytest && pytest /scripts/test-fts-with-xrootd.py"
 
 .PHONY: test-xrootd-oidc
 test-xrootd-oidc: ## XRootD TPC test with OIDC tokens (SciTokens)
