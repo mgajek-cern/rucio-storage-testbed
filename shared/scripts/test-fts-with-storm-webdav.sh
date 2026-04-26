@@ -43,6 +43,10 @@ http_check() {
 # ── Logic ──────────────────────────────────────────────────────────────────
 
 prepare_storage_areas() {
+    if [[ "$RUNTIME" == "k8s" ]]; then
+        echo "=== Storage areas managed by chart (fsGroup) ==="
+        return
+    fi
     echo "=== Preparing storage area ownership ==="
     for s in storm1 storm2; do
         _exec_root "$s" sh -c \

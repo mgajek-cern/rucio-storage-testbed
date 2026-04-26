@@ -21,7 +21,16 @@ spec:
         - name: client
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["/bin/bash", "-c", "while true; do sleep 60; done"]
+          command:
+            - /bin/bash
+            - -c
+            - |
+              pip install --no-cache-dir \
+                --trusted-host pypi.org \
+                --trusted-host pypi.python.org \
+                --trusted-host files.pythonhosted.org \
+                pytest &&
+              sleep infinity
           env:
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
@@ -49,6 +58,10 @@ spec:
               subPath: userpass-client.cfg
               readOnly: true
             - name: configs
+              mountPath: /opt/rucio/etc/rucio.cfg
+              subPath: userpass-client.cfg
+              readOnly: true
+            - name: configs
               mountPath: /opt/rucio/etc/userpass-client-for-rucio-oidc.cfg
               subPath: userpass-client-for-rucio-oidc.cfg
               readOnly: true
@@ -66,6 +79,7 @@ spec:
         - name: certs
           secret:
             secretName: {{ .Values.certsSecret }}
+            defaultMode: 0600
         - name: configs
           configMap:
             name: {{ .Values.configsConfigMap }}

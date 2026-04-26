@@ -109,7 +109,11 @@ _fts_curl() {
         compose)
             curl -sk --cacert "${CACERT:-./certs/rucio_ca.pem}" "$@" ;;
         k8s)
-            _exec "fts-${variant}" curl -sk "$@" ;;
+            _exec fts curl -sk \
+                --cert /etc/grid-security/hostcert.pem \
+                --key  /etc/grid-security/hostkey.pem \
+                --cacert /etc/grid-security/certificates/rucio_ca.pem \
+                "$@" ;;
     esac
 }
 
@@ -160,7 +164,14 @@ _cp_to() {
     local src=$1 svc=$2 dst=$3
     case "$RUNTIME" in
         compose) docker cp "$src" "compose-${svc}-1:$dst" ;;
-        k8s)     kubectl -n "$K8S_NAMESPACE" cp "$src" "deploy/${svc}:$dst" ;;
+        k8s)
+            local pod
+            pod=$(kubectl -n "$K8S_NAMESPACE" get pod -l app="$svc" \
+                  -o jsonpath='{.items[0].metadata.name}')
+            [[ -n "$pod" ]] || { echo "No pod found for $svc" >&2; return 1; }
+            kubectl -n "$K8S_NAMESPACE" cp "$src" "$pod:$dst" -c "$svc" 2>/dev/null \
+                || kubectl -n "$K8S_NAMESPACE" cp "$src" "$pod:$dst"
+            ;;
     esac
 }
 
@@ -169,6 +180,13 @@ _cp_from() {
     local svc=$1 src=$2 dst=$3
     case "$RUNTIME" in
         compose) docker cp "compose-${svc}-1:$src" "$dst" ;;
-        k8s)     kubectl -n "$K8S_NAMESPACE" cp "deploy/${svc}:$src" "$dst" ;;
+        k8s)
+            local pod
+            pod=$(kubectl -n "$K8S_NAMESPACE" get pod -l app="$svc" \
+                  -o jsonpath='{.items[0].metadata.name}')
+            [[ -n "$pod" ]] || { echo "No pod found for $svc" >&2; return 1; }
+            kubectl -n "$K8S_NAMESPACE" cp "$pod:$dst" "$src" -c "$svc" 2>/dev/null \
+                || kubectl -n "$K8S_NAMESPACE" cp "$pod:$dst" "$src"
+            ;;
     esac
 }

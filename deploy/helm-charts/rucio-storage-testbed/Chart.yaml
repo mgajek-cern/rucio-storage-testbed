@@ -29,12 +29,12 @@ dependencies:
   # Rucio servers — GSI and OIDC variants, both from the upstream chart.
   - name: rucio-server
     version: "~40.0.0"
-    repository: https://rucio.github.io/helm-charts
+    repository: "file://../rucio-server"
     alias: rucio
     condition: rucio.enabled
   - name: rucio-server
     version: "~40.0.0"
-    repository: https://rucio.github.io/helm-charts
+    repository: "file://../rucio-server"
     alias: rucio-oidc
     condition: "rucio-oidc.enabled"
 

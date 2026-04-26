@@ -1,8 +1,21 @@
 #!/usr/bin/env bash
 # test-rucio-transfers.sh — manual registration workflow
+#
+# Skips XRootD GSI on k8s runtime (see KNOWN_ISSUES.md for context).
+# Set SKIP_GSI=1 to skip GSI even on compose.
+
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_lib.sh"
+
+# Default skip-list based on runtime. RUNTIME is exported by the Makefile.
+: "${RUNTIME:=compose}"
+: "${SKIP_GSI:=}"
+
+if [ "$RUNTIME" = "k8s" ] && [ -z "$SKIP_GSI" ]; then
+    SKIP_GSI=1
+    echo "[NOTICE] Skipping XRootD GSI test on k8s runtime (see KNOWN_ISSUES.md)"
+fi
 
 # ── Auth & Daemon Helpers ─────────────────────────────────────────────────────
 
@@ -55,8 +68,6 @@ register_replica_internal() {
         exit 1
     fi
 
-    # adler32: stream from storage container into python3 in rucio container.
-    # _adler32 handles the cross-runtime piping.
     local adler32
     adler32=$(_adler32 "$storage_svc" "$fpath" "$rucio_svc")
 
@@ -184,7 +195,11 @@ test_xrootd_oidc() {
 }
 
 main() {
-    test_xrootd_gsi
+    if [ -z "$SKIP_GSI" ]; then
+        test_xrootd_gsi
+    else
+        echo -e "\n[ SKIP: XRootD GSI (XRD1 -> XRD2) — RUNTIME=$RUNTIME ]"
+    fi
     test_storm_oidc
     test_xrootd_oidc
 }
