@@ -1,14 +1,28 @@
 #!/usr/bin/env python3
 """
 test-fts-with-xrootd.py — test FTS3 REST API end-to-end using the fts3 Python REST client.
-Handles proxy delegation automatically via M2Crypto (same approach as Rucio's fts-cron).
 
-Usage:
-  # From host (requires fts3 + M2Crypto installed locally):
-  python3 scripts/test-fts-with-xrootd.py
+Runtime-agnostic: this script only talks to FTS over HTTPS, no docker/kubectl
+required. It can be invoked from any context that has:
+  - fts3 + M2Crypto installed
+  - a usable client cert/key pair
+  - network reachability to the FTS endpoint
 
-  # From inside the FTS container (recommended):
-  docker exec <fts-container> bash -c 'FTS=https://fts:8446 python3 /scripts/test-fts-with-xrootd.py'
+Configuration (all overridable via env vars):
+  FTS   FTS REST endpoint (default: https://localhost:8446)
+  CERT  Client cert path  (default: /etc/grid-security/hostcert.pem)
+  KEY   Client key path   (default: /etc/grid-security/hostkey.pem)
+  SRC   Source URL        (default: root://xrd1//rucio/fts-test-file)
+  DST   Destination URL   (default: root://xrd2//rucio/fts-test-file)
+
+Typical invocations:
+
+  # Inside the FTS container (compose) — defaults are correct:
+  docker exec compose-fts-1 python3 /scripts/test-fts-with-xrootd.py
+
+  # Inside the FTS pod (k8s):
+  kubectl -n rucio-testbed exec deploy/fts -- \\
+      python3 /scripts/test-fts-with-xrootd.py
 """
 
 import datetime

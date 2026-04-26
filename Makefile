@@ -10,6 +10,8 @@ SHELL       := /usr/bin/env bash
 .SHELLFLAGS := -eu -o pipefail -c
 .DEFAULT_GOAL := help
 
+RUNTIME ?= compose
+
 # Anchor for compose bind-mounts. Override if running from an unusual shell.
 export TESTBED_HOST_SOURCE ?= $(CURDIR)
 
@@ -22,6 +24,15 @@ HELM_RELEASE ?= testbed
 K8S_NAMESPACE ?= rucio-testbed
 KUBECTL      := kubectl -n $(K8S_NAMESPACE)
 HELM         := helm
+
+# Execution wrappers based on RUNTIME (Defined after variables they depend on)
+ifeq ($(RUNTIME), k8s)
+  EXEC_RUCIO := $(KUBECTL) exec deploy/rucio-client --
+  EXEC_FTS   := $(KUBECTL) exec deploy/fts --
+else
+  EXEC_RUCIO := docker exec compose-rucio-client-1
+  EXEC_FTS   := docker exec compose-fts-1
+endif
 
 # ── Help ──────────────────────────────────────────────────────────────────
 .PHONY: help
@@ -66,12 +77,8 @@ compose-build: ## Build local Docker images (fts, xrd-scitokens, rucio-client-di
 	$(COMPOSE) build
 
 .PHONY: bootstrap
-bootstrap: ## Bootstrap Rucio (accounts, RSEs, OIDC identities, token providers)
+bootstrap: ## Bootstrap Rucio (uses $RUNTIME — set RUNTIME=k8s for kubernetes)
 	./shared/scripts/bootstrap-testbed.sh
-
-.PHONY: bootstrap-k8s
-bootstrap-k8s: ## Bootstrap Rucio against the Helm-deployed testbed
-	RUNTIME=k8s K8S_NAMESPACE=$(K8S_NAMESPACE) ./shared/scripts/bootstrap-testbed.sh
 
 ## Helm / Kubernetes lifecycle (helm-*, k8s-*)
 
@@ -113,13 +120,11 @@ test-rucio: ## Rucio E2E transfer test (bash version)
 
 .PHONY: test-rucio-python
 test-rucio-python: ## Rucio E2E transfer test (Python, runs in rucio-client container)
-	docker exec compose-rucio-client-1 \
-	    python3 /scripts/test-rucio-transfers.py
+	$(EXEC_RUCIO) python3 /scripts/test-rucio-transfers.py
 
 .PHONY: test-xrootd-gsi
 test-xrootd-gsi: ## XRootD TPC test with X.509 GSI
-	docker exec compose-fts-1 \
-	    python3 /scripts/test-fts-with-xrootd.py
+	$(EXEC_FTS) python3 /scripts/test-fts-with-xrootd.py
 
 .PHONY: test-xrootd-oidc
 test-xrootd-oidc: ## XRootD TPC test with OIDC tokens (SciTokens)
@@ -137,8 +142,12 @@ test-webdav: ## WebDAV TPC test with X.509 GSI
 test-s3: ## S3/MinIO test with signed URLs
 	./shared/scripts/test-fts-with-s3.sh
 
-.PHONY: test-all
-test-all: test-rucio test-xrootd-gsi test-xrootd-oidc test-storm test-webdav test-s3 ## Run every test sequentially
+.PHONY: test-all ### Run all tests (in series)
+test-all: test-xrootd-gsi test-s3 test-webdav test-storm test-xrootd-oidc test-rucio test-rucio-python
+
+.PHONY: test-all-k8s ## Run all tests against a Kubernetes deployment (set RUNTIME=k8s to target k8s)
+test-all-k8s:
+	$(MAKE) test-all RUNTIME=k8s
 
 ## Development
 

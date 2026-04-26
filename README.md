@@ -17,53 +17,90 @@ Multi-architecture Rucio + FTS3 integration testbed with XRootD, WebDAV, S3, Sto
 
 ## Quick start
 
+### Docker Compose
+
+The default runtime is compose.
+
 ```bash
-# 1. Generate certificates (includes StoRM trust anchors and JVM cacerts)
+# 1. Generate certificates
 make certs
 
 # 2. Start the stack
 make compose-up
 
-# 3. Bootstrap Rucio (accounts, RSEs, OIDC identities, token providers)
+# 3. Bootstrap Rucio
 make bootstrap
 
-# 4. Run transfer tests
+# 4. Run transfer tests (Bash or Python)
 make test-rucio
+make test-rucio-python
+# Or run the full suite at once
+make test-all
+```
+
+### Kubernetes
+
+Pass `RUNTIME=k8s` to target the `kind` cluster.
+
+```bash
+# 1. Generate certificates
+make certs
+
+# 2. Install the Helm chart
+make helm-install
+
+# 3. Bootstrap Rucio
+RUNTIME=k8s make bootstrap
+
+# 4. Run transfer tests
+RUNTIME=k8s make test-rucio
+RUNTIME=k8s make test-rucio-python
+# Or run the full suite at once
+make test-all-k8s
 ```
 
 ## Make targets
 
 ```bash
 make help
-  help                   Show this help (default target)
+  help                       Show this help (default target)
 
 Setup
-  certs                  Generate all certificates (CA, hosts, StoRM trust anchors, JVM cacerts)
+  certs                      Generate all certificates (CA, hosts, StoRM trust anchors, JVM cacerts)
 
 Stack lifecycle (compose-*)
-  compose-up             Start the full stack in the background
-  compose-down           Stop the stack and remove volumes
-  compose-restart        Tear down and restart the stack
-  compose-ps             List running containers
-  compose-logs           Tail logs from all services (Ctrl-C to exit)
-  compose-build          Build local Docker images (fts, xrd-scitokens, rucio-client-dind)
-  bootstrap              Bootstrap Rucio (accounts, RSEs, OIDC identities, token providers)
+  compose-up                 Start the full stack in the background
+  compose-down               Stop the stack and remove volumes
+  compose-restart            Tear down and restart the stack
+  compose-ps                 List running containers
+  compose-logs               Tail logs from all services (Ctrl-C to exit)
+  compose-logs-%             Tail logs from a single service, e.g. `make compose-logs-rucio`
+  compose-build              Build local Docker images (fts, xrd-scitokens, rucio-client-dind)
+  bootstrap                  Bootstrap Rucio (uses $RUNTIME — set RUNTIME=k8s for kubernetes)
+
+Helm / Kubernetes lifecycle (helm-*, k8s-*)
+  helm-lint                  Lint the umbrella chart
+  helm-template              Render manifests locally (helm template …) without installing
+  helm-install               Create the namespace and install the umbrella chart
+  helm-upgrade               Apply local chart changes to the running release
+  helm-uninstall             Uninstall the release and delete its PVCs
+  helm-reinstall             Uninstall + install (full reset)
+  k8s-pods                   List pods in the testbed namespace
 
 Tests
-  test-rucio             Rucio E2E transfer test (bash version)
-  test-rucio-python      Rucio E2E transfer test (Python, runs in rucio-client container)
-  test-xrootd-gsi        XRootD TPC test with X.509 GSI
-  test-xrootd-oidc       XRootD TPC test with OIDC tokens (SciTokens)
-  test-storm             StoRM WebDAV TPC test with OIDC tokens
-  test-webdav            WebDAV TPC test with X.509 GSI
-  test-s3                S3/MinIO test with signed URLs
-  test-all               Run every test sequentially
+  test-rucio                 Rucio E2E transfer test (bash version)
+  test-rucio-python          Rucio E2E transfer test (Python, runs in rucio-client container)
+  test-xrootd-gsi            XRootD TPC test with X.509 GSI
+  test-xrootd-oidc           XRootD TPC test with OIDC tokens (SciTokens)
+  test-storm                 StoRM WebDAV TPC test with OIDC tokens
+  test-webdav                WebDAV TPC test with X.509 GSI
+  test-s3                    S3/MinIO test with signed URLs
 
 Development
-  lint                   Run pre-commit hooks on all files
+  lint                       Run pre-commit hooks on all files
 
 Cleanup
-  clean                  Remove certs and volumes (stack must be down first)
+  clean                      Remove generated certs and volumes; keep CA (rucio_ca.pem + key)
 ```
 
 ## High Level Flow

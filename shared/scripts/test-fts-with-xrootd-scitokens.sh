@@ -1,27 +1,15 @@
 #!/usr/bin/env bash
-# test-fts-with-xrootd-scitokens.sh — XRootD SciTokens TPC test via HTTP-TPC
+# test-fts-with-xrootd-scitokens.sh — XRootD SciTokens TPC test
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_lib.sh"
 
-# ── Global Config ───────────────────────────────────────────────────────────
-FTS="https://localhost:8447"
 CACERT=./certs/rucio_ca.pem
-FTS_OIDC_CONTAINER=compose-fts-oidc-1
-XRD3=compose-xrd3-1
-XRD4=compose-xrd4-1
 
-# ── Helpers ─────────────────────────────────────────────────────────────────
-
-fetch_token() {
-  local audience=$1 scope=$2
-  docker exec "$FTS_OIDC_CONTAINER" curl -sk \
-    -u "rucio-oidc:rucio-oidc-secret" \
-    -d "grant_type=client_credentials&scope=${scope}&audience=${audience}" \
-    https://keycloak:8443/realms/rucio/protocol/openid-connect/token \
-    | python3 -c "import sys, json; print(json.load(sys.stdin)['access_token'])"
-}
+# ── Helpers ────────────────────────────────────────────────────────────────
 
 decode_claims() {
-  python3 -c "
+    python3 -c "
 import base64, sys, json
 tok = sys.stdin.read().strip()
 payload = tok.split('.')[1]
@@ -32,59 +20,73 @@ for k in ('iss', 'aud', 'scope', 'sub', 'exp'):
 "
 }
 
-fts_curl() {
-  curl -sk --cacert "$CACERT" -H "Authorization: Bearer $FTS_TOKEN" "$@"
-}
-
-# ── Logic Blocks ────────────────────────────────────────────────────────────
+# ── Logic ──────────────────────────────────────────────────────────────────
 
 check_reachability() {
-  echo "=== Reachability checks ==="
-  for c in "$XRD3" "$XRD4"; do
-    state=$(docker inspect --format='{{.State.Status}}' "$c" 2>/dev/null || echo missing)
-    [[ "$state" == "running" ]] || { echo "  ✗ $c not running ($state)"; exit 1; }
+    echo "=== Reachability checks ==="
+    for c in xrd3 xrd4; do
+        case "$RUNTIME" in
+            compose)
+                state=$(docker inspect --format='{{.State.Status}}' \
+                    "compose-${c}-1" 2>/dev/null || echo missing)
+                [[ "$state" == "running" ]] \
+                    || { echo "  ✗ $c not running ($state)"; exit 1; } ;;
+            k8s)
+                state=$(kubectl -n "$K8S_NAMESPACE" get pod -l app="$c" \
+                    -o jsonpath='{.items[0].status.phase}' 2>/dev/null \
+                    || echo missing)
+                [[ "$state" == "Running" ]] \
+                    || { echo "  ✗ $c not running ($state)"; exit 1; } ;;
+        esac
 
-    docker exec "$c" sh -c 'find /usr /lib /lib64 -name "libXrdAccSciTokens*" -type f 2>/dev/null | grep -q .' \
-      || { echo "  ✗ $c missing libXrdAccSciTokens.so"; exit 1; }
-    echo "  ✓ $c is running and has SciTokens plugin"
-  done
+        _exec "$c" sh -c \
+            'find /usr /lib /lib64 -name "libXrdAccSciTokens*" -type f 2>/dev/null | grep -q .' \
+            || { echo "  ✗ $c missing libXrdAccSciTokens.so"; exit 1; }
+        echo "  ✓ $c is running and has SciTokens plugin"
+    done
 
-  echo -e "\n=== HTTPS reachability from fts-oidc ==="
-  for host in xrd3 xrd4; do
-    code=$(docker exec "$FTS_OIDC_CONTAINER" curl -sk --max-time 5 -o /dev/null -w '%{http_code}' "https://$host:1094/" 2>/dev/null) || true
-    if [[ "$code" =~ ^(200|401|403|404)$ ]]; then
-      echo "  ✓ https://$host:1094 reachable (HTTP $code)"
-    else
-      echo "  ✗ https://$host:1094 unreachable from fts-oidc"; exit 1
-    fi
-  done
+    echo -e "\n=== HTTPS reachability from fts-oidc ==="
+    for host in xrd3 xrd4; do
+        code=$(_exec fts-oidc curl -sk --max-time 5 -o /dev/null \
+            -w '%{http_code}' "https://$host:1094/" 2>/dev/null) || true
+        if [[ "$code" =~ ^(200|401|403|404)$ ]]; then
+            echo "  ✓ https://$host:1094 reachable (HTTP $code)"
+        else
+            echo "  ✗ https://$host:1094 unreachable from fts-oidc"; exit 1
+        fi
+    done
 }
 
 seed_xrd3() {
-  echo -e "\n=== Seeding file on xrd3 ==="
-  SEED="scitokens-test-$(date +%s)"
-  docker exec --user root "$XRD3" sh -c "
-    echo 'xrd-scitokens-tpc-test' > /data/$SEED &&
-    chown xrootd:xrootd /data/$SEED &&
-    chmod 644 /data/$SEED
-  "
-  echo "  ✓ seeded /data/$SEED"
+    echo -e "\n=== Seeding file on xrd3 ==="
+    SEED="scitokens-test-$(date +%s)"
+    _exec_root xrd3 sh -c "
+        echo 'xrd-scitokens-tpc-test' > /data/$SEED &&
+        chown xrootd:xrootd /data/$SEED &&
+        chmod 644 /data/$SEED
+    "
+    echo "  ✓ seeded /data/$SEED"
 }
 
 get_tokens() {
-  echo -e "\n=== Fetching Tokens ==="
-  FTS_TOKEN=$(fetch_token fts-oidc "openid fts")
-  SRC_TOKEN=$(fetch_token xrd3 "openid storage.read:/data")
-  DST_TOKEN=$(fetch_token xrd4 "openid storage.modify:/data")
+    echo -e "\n=== Fetching Tokens ==="
+    FTS_TOKEN=$(_fetch_token \
+        "grant_type=client_credentials&scope=openid fts&audience=fts-oidc")
+    SRC_TOKEN=$(_fetch_token \
+        "grant_type=client_credentials&scope=openid storage.read:/data&audience=xrd3")
+    DST_TOKEN=$(_fetch_token \
+        "grant_type=client_credentials&scope=openid storage.modify:/data&audience=xrd4")
 
-  echo "  ✓ Tokens obtained from Keycloak"
-  echo "  Source claims:"
-  echo "$SRC_TOKEN" | decode_claims
+    echo "  ✓ Tokens obtained from Keycloak"
+    echo "  Source claims:"
+    echo "$SRC_TOKEN" | decode_claims
 }
 
 run_tpc_job() {
-  echo -e "\n=== Submitting TPC job (davs://) ==="
-  local job_json=$(cat <<EOF
+    echo -e "\n=== Submitting TPC job (davs://) ==="
+    local fts_url=$(_fts_url oidc)
+    local job_json
+    job_json=$(cat <<EOF
 {
   "files": [{
     "sources":            ["davs://xrd3:1094/data/$SEED"],
@@ -96,50 +98,63 @@ run_tpc_job() {
 }
 EOF
 )
-  local resp=$(fts_curl -X POST "$FTS/jobs" -H "Content-Type: application/json" -d "$job_json")
-  JOB_ID=$(echo "$resp" | python3 -c "import sys, json; print(json.load(sys.stdin).get('job_id', ''))")
-  [[ -n "$JOB_ID" ]] || { echo "  ✗ Job submission failed: $resp"; exit 1; }
-  echo "  ✓ Job ID: $JOB_ID"
+    local resp
+    resp=$(_fts_curl oidc -X POST "$fts_url/jobs" \
+        -H "Authorization: Bearer $FTS_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d "$job_json")
+    JOB_ID=$(echo "$resp" \
+        | python3 -c "import sys,json; print(json.load(sys.stdin).get('job_id',''))")
+    [[ -n "$JOB_ID" ]] || { echo "  ✗ Job submission failed: $resp"; exit 1; }
+    echo "  ✓ Job ID: $JOB_ID"
 
-  echo -e "\n=== Polling job status ==="
-  for i in $(seq 1 30); do
-    sleep 5
-    local state=$(fts_curl "$FTS/jobs/$JOB_ID" | python3 -c "import sys,json; print(json.load(sys.stdin)['job_state'])")
-    echo "  [${i}] $state"
-    case $state in
-      FINISHED) echo "✓ TPC FINISHED"; return 0 ;;
-      FAILED|CANCELED)
-        echo "✗ $state"
-        fts_curl "$FTS/jobs/$JOB_ID/files" | python3 -m json.tool
-        return 1 ;;
-    esac
-  done
-  return 1
+    echo -e "\n=== Polling job status ==="
+    for i in $(seq 1 30); do
+        sleep 5
+        local state
+        state=$(_fts_curl oidc -H "Authorization: Bearer $FTS_TOKEN" \
+            "$fts_url/jobs/$JOB_ID" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['job_state'])")
+        echo "  [${i}] $state"
+        case $state in
+            FINISHED) echo "✓ TPC FINISHED"; return 0 ;;
+            FAILED|CANCELED)
+                echo "✗ $state"
+                _fts_curl oidc -H "Authorization: Bearer $FTS_TOKEN" \
+                    "$fts_url/jobs/$JOB_ID/files" | python3 -m json.tool
+                return 1 ;;
+        esac
+    done
+    return 1
 }
 
 verify_replica() {
-  echo -e "\n=== Verifying replica on xrd4 ==="
-  docker exec "$XRD4" test -f "/data/${SEED}-copy" || { echo "✗ file missing"; exit 1; }
+    echo -e "\n=== Verifying replica on xrd4 ==="
+    _exec xrd4 test -f "/data/${SEED}-copy" \
+        || { echo "✗ file missing"; exit 1; }
 
-  local content=$(docker exec "$XRD4" cat "/data/${SEED}-copy")
-  [[ "$content" == "xrd-scitokens-tpc-test" ]] \
-    && echo "  ✓ content matches source" \
-    || { echo "  ✗ content mismatch: $content"; exit 1; }
+    local content
+    content=$(_exec xrd4 cat "/data/${SEED}-copy")
+    [[ "$content" == "xrd-scitokens-tpc-test" ]] \
+        && echo "  ✓ content matches source" \
+        || { echo "  ✗ content mismatch: $content"; exit 1; }
 
-  echo -e "\n=== xrd4 authz log evidence ==="
-  docker logs "$XRD4" 2>&1 | grep -iE "scitokens|authz|token|jwt|bearer" | tail -10 || echo "  (no logs)"
+    echo -e "\n=== xrd4 authz log evidence ==="
+    case "$RUNTIME" in
+        compose) docker logs compose-xrd4-1 2>&1 ;;
+        k8s)     kubectl -n "$K8S_NAMESPACE" logs deploy/xrd4 ;;
+    esac \
+        | grep -iE "scitokens|authz|token|jwt|bearer" \
+        | tail -10 || echo "  (no logs)"
 }
 
-# ── Main Entry Point ────────────────────────────────────────────────────────
-
 main() {
-  check_reachability
-  seed_xrd3
-  get_tokens
-  run_tpc_job
-  verify_replica
-
-  echo -e "\n✓ All XRootD SciTokens HTTP-TPC checks passed"
+    check_reachability
+    seed_xrd3
+    get_tokens
+    run_tpc_job
+    verify_replica
+    echo -e "\n✓ All XRootD SciTokens HTTP-TPC checks passed"
 }
 
 main

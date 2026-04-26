@@ -3,9 +3,14 @@
 Python equivalent of test-rucio-transfers.sh — runs the same three scenarios
 (XRootD GSI, StoRM OIDC, XRootD OIDC) using the Rucio Python client.
 
-Designed to run INSIDE the rucio-client container:
+Typical invocations:
+    # Inside the rucio-client container (compose) — defaults are correct:
     docker exec compose-rucio-client-1 \\
-      python3 /scripts/test-rucio-transfers.py
+        python3 /scripts/test-rucio-transfers.py
+
+    # Inside the rucio-client pod (k8s):
+    kubectl -n rucio-testbed exec deploy/rucio-client -- \\
+        python3 /scripts/test-rucio-transfers.py
 """
 
 import logging

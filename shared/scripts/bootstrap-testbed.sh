@@ -1,98 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_lib.sh"
 
-# ── Runtime selection ──────────────────────────────────────────────────────
-# Set RUNTIME=compose or RUNTIME=k8s. Defaults to compose so existing
-# muscle memory keeps working.
-RUNTIME="${RUNTIME:-compose}"
-K8S_NAMESPACE="${K8S_NAMESPACE:-rucio-testbed}"
-
-# ── Service identifiers ────────────────────────────────────────────────────
-# Each service has two names: how docker compose addresses it, and how
-# kubectl addresses it (workload + container). Service DNS names inside
-# the cluster (rucio, fts, keycloak, …) are identical to the compose
-# service names by design — see the umbrella chart README.
+# ── Service URLs (used by RSE config) ───────────────────────────────────────
 FTS="https://fts:8446"
 FTS_OIDC="https://fts-oidc:8446"
 
-# ── Cross-runtime helpers ──────────────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-COMPOSE_FILE="$PROJECT_ROOT/deploy/compose/docker-compose.yml"
-
-# _exec <service> -- <command…>
-#
-# In compose mode: docker exec compose-<service>-1 <command…>
-# In k8s mode:     kubectl exec deploy/<service> -c <service> -- <command…>
-#
-# The container name in our k8s setup matches the deployment name for the
-# main app container (rucio, rucio-oidc, fts, fts-oidc, etc.). For pods
-# with sidecars (rucio, rucio-oidc) this hits the rucio app container.
-_exec() {
-    local svc=$1; shift
-    case "$RUNTIME" in
-        compose)
-            docker exec "compose-${svc}-1" "$@"
-            ;;
-        k8s)
-            local target
-            local -a cflag=()
-            case "$svc" in
-                # StatefulSets (single-container pods, name varies by chart).
-                ftsdb|ftsdb-oidc|ruciodb|ruciodb-oidc|storm1|storm2|minio1|minio2)
-                    target="pod/${svc}-0"
-                    ;;
-                # Deployments with a sidecar — must specify which container.
-                rucio|rucio-oidc)
-                    target="deploy/${svc}"
-                    cflag=(-c "$svc")
-                    ;;
-                # All other Deployments are single-container pods.
-                *)
-                    target="deploy/${svc}"
-                    ;;
-            esac
-            kubectl -n "$K8S_NAMESPACE" exec "$target" "${cflag[@]}" -- "$@"
-            ;;
-        *) echo "Unknown RUNTIME: $RUNTIME" >&2; exit 1 ;;
-    esac
-}
-
-# _restart <service…>  — graceful restart of one or more services
-_restart() {
-    case "$RUNTIME" in
-        compose)
-            docker compose -f "$COMPOSE_FILE" restart "$@" ;;
-        k8s)
-            for svc in "$@"; do
-                local target
-                case "$svc" in
-                    storm1|storm2|minio1|minio2|ftsdb*|ruciodb*)
-                        target="statefulset/${svc}" ;;
-                    *)
-                        target="deploy/${svc}" ;;
-                esac
-                kubectl -n "$K8S_NAMESPACE" rollout restart "$target"
-                kubectl -n "$K8S_NAMESPACE" rollout status  "$target" --timeout=120s
-            done ;;
-    esac
-}
-
-# _http_probe_local <port> <path>  — probe rucio-oidc from the test runner
-# In compose: hits localhost (port mapping). In k8s: uses kubectl port-forward.
-# Returns the HTTP status code.
-_http_probe_local() {
-    local port=$1 path=$2
-    case "$RUNTIME" in
-        compose)
-            curl -s -o /dev/null -w '%{http_code}' "http://localhost:${port}${path}" || true ;;
-        k8s)
-            _exec rucio-oidc curl -s -o /dev/null -w '%{http_code}' \
-                "http://localhost${path}" 2>/dev/null || true ;;
-    esac
-}
-
-# Convenience wrappers
+# Convenience wrappers — bootstrap-specific, not promoted to _lib.sh because
+# only this script invokes rucio-admin.
 ra()      { _exec rucio      rucio-admin -S userpass -u ddmlab --password secret "$@"; }
 ra_oidc() { _exec rucio-oidc rucio-admin -S userpass -u ddmlab --password secret "$@"; }
 
@@ -220,9 +136,6 @@ configure_rses() {
     done
 
     # OIDC-only RSEs: XRD3/XRD4 (SciTokens) and STORM1/STORM2 (OIDC bearer).
-    # The classic Rucio instance has no idpsecrets configured and cannot
-    # mint OIDC tokens, so registering these on classic leaves stray
-    # requests that fail in the submitter.
     if [[ "$label" == "Rucio-OIDC" ]]; then
 
         for rse in XRD3 XRD4; do
@@ -310,22 +223,17 @@ fts3.delegate(ctx, lifetime=datetime.timedelta(hours=48), force=True)
 setup_scopes_and_quotas() {
     echo "=== Configuring Scopes and Quotas ==="
 
-    # Create Scopes
     ra scope add --account root --scope test || true
     ra_oidc scope add --account root --scope test || true
-
     ra_oidc scope add --account randomaccount --scope randomaccount || true
-
     ra scope add --account ddmlab --scope ddmlab || true
     ra_oidc scope add --account ddmlab --scope ddmlab || true
 
-    # Set Quotas for Classic Instance (ra)
     for rse in XRD1 XRD2 WEBDAV1 WEBDAV2; do
         ra account set-limits root "$rse" -1 || true
         ra account set-limits ddmlab "$rse" -1 || true
     done
 
-    # Set Quotas for OIDC Instance (ra_oidc)
     for rse in STORM1 STORM2 XRD3 XRD4; do
         ra_oidc account set-limits root "$rse" -1 || true
         ra_oidc account set-limits randomaccount "$rse" -1 || true
@@ -338,15 +246,10 @@ setup_scopes_and_quotas() {
 main() {
     wait_for_infrastructure
     restart_storm_nodes "Initial Startup"
-
     setup_accounts_and_identities
-
-    configure_rses "ra" "$FTS" "Rucio-Classic"
-    configure_rses "ra_oidc" "$FTS" "Rucio-OIDC"
-
-    # Call the new function
+    configure_rses "ra"      "$FTS"      "Rucio-Classic"
+    configure_rses "ra_oidc" "$FTS"      "Rucio-OIDC"
     setup_scopes_and_quotas
-
     setup_fts_oidc_provider
     restart_storm_nodes "Final JWKS Sync"
     delegate_gsi_proxies

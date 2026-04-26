@@ -29,7 +29,7 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 
 # Example for Rucio Clients with DinD
 docker buildx build --platform linux/amd64,linux/arm64 \
-    -t rucio-client-dind:local -f deploy/compose/Dockerfile.xrd-scitokens .
+    -t rucio-client-dind:local -f deploy/compose/Dockerfile.rucio-client-dind .
 ```
 
 ## Known issues on macOS (Apple Silicon)
