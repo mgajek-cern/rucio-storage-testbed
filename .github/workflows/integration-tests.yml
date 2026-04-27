@@ -7,17 +7,31 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-amd64:
+  test-amd64-compose:
     uses: ./.github/workflows/_run-integration-tests.yml
     with:
       runner: ubuntu-latest
       label: amd64
-      compose_file: deploy/compose/docker-compose.ci.yml
+      runtime: compose
 
-  test-arm64:
+  test-amd64-k8s:
+    uses: ./.github/workflows/_run-integration-tests.yml
+    with:
+      runner: ubuntu-latest
+      label: amd64
+      runtime: k8s
+
+  test-arm64-compose:
     uses: ./.github/workflows/_run-integration-tests.yml
     with:
       # ubuntu-24.04-arm: GitHub-hosted arm64 Linux runner, Docker + QEMU pre-installed
       runner: ubuntu-24.04-arm
       label: arm64
-      compose_file: deploy/compose/docker-compose.ci.yml
+      runtime: compose
+
+  test-arm64-k8s:
+    uses: ./.github/workflows/_run-integration-tests.yml
+    with:
+      runner: ubuntu-24.04-arm
+      label: arm64
+      runtime: k8s

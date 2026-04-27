@@ -11,7 +11,7 @@ helm-charts/
 ├── rucio-storage-testbed/        # Umbrella (meta) chart — deploy this
 │   ├── Chart.yaml                # Declares deps on all subcharts below
 │   ├── values.yaml               # Single source of truth (toggle services, OIDC, etc.)
-│   ├── files/                    # Symlinks into the repo's shared/ tree
+│   ├── files/                    # Symlinks to repo root (fixed for Helm context)
 │   │   ├── certs/    → ../../../certs
 │   │   ├── configs/  → ../../../shared/config
 │   │   ├── patches/  → ../../../shared/patches
@@ -37,13 +37,27 @@ helm-charts/
 server deployments reuse the upstream `rucio/rucio-server` chart — both are
 declared as dependencies of the umbrella chart.
 
+## Repairing Symlinks
+
+```bash
+# Navigate to the umbrella chart's files directory
+cd rucio-storage-testbed/files
+
+# Recreate corrected links (4 levels up to reach repo root)
+rm -f certs configs patches scripts
+ln -s ../../../../certs certs
+ln -s ../../../../shared/config configs
+ln -s ../../../../shared/patches patches
+ln -s ../../../../shared/scripts scripts
+```
+
 ## Quickstart
 
 ```sh
-# 1. Generate certs (once) using the testbed's existing helper.
-./scripts/generate-certs.sh    # from the rucio-storage-testbed repo root
+# 1. Generate certs (once) from repo root
+./scripts/generate-certs.sh
 
-# 2. Create the namespace and install.
+# 2. Create the namespace and install
 kubectl create namespace rucio-testbed
 helm dependency update helm-charts/rucio-storage-testbed
 helm install testbed helm-charts/rucio-storage-testbed --namespace rucio-testbed
@@ -51,7 +65,7 @@ helm install testbed helm-charts/rucio-storage-testbed --namespace rucio-testbed
 
 You should end up with something like:
 
-```
+```bash
 $ kubectl get pods -n rucio-testbed
 NAME                            READY   STATUS    RESTARTS   AGE
 fts-554f49847f-xs7w8            1/1     Running   0          6s

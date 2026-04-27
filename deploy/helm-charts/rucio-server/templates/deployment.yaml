@@ -1,0 +1,364 @@
+{{- if gt .Values.replicaCount 0.0 -}}
+{{- $common_config := .Values.config | default dict | mustToPrettyJson | b64enc }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "rucio.fullname" . }}
+  labels:
+    app: {{ template "rucio.name" . }}
+    chart: {{ template "rucio.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+{{- with .Values.deploymentAnnotations }}
+  annotations:
+{{ toYaml . | indent 4 }}
+{{- end }}
+
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ template "rucio.name" . }}
+      release: {{ .Release.Name }}
+  strategy:
+    type: {{ .Values.strategy.type }}
+{{- if eq .Values.strategy.type "RollingUpdate" }}
+    {{- with .Values.strategy.rollingUpdate }}
+    rollingUpdate:
+{{ toYaml . | trim | indent 6 }}
+    {{- end }}
+{{- end }}
+  minReadySeconds: {{ .Values.minReadySeconds }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "rucio.name" . }}
+        release: {{ .Release.Name }}
+      annotations:
+        checksum/config: {{ $common_config | sha1sum }}
+    spec:
+    {{- if .Values.serviceAccountName }}
+      serviceAccountName: {{ .Values.serviceAccountName }}
+    {{- end }}
+      volumes:
+      - name: config
+        secret:
+          secretName: {{ template "rucio.fullname" . }}.config.common
+      {{- if .Values.useDeprecatedImplicitSecrets }}
+      {{- if .Values.ftsRenewal.enabled }}
+      - name: proxy-volume
+        secret:
+          secretName: {{ .Release.Name }}-rucio-x509up
+      - name: ca-volume
+        secret:
+          secretName: {{ .Release.Name }}-rucio-ca-bundle
+      {{- end }}
+      {{- end }}
+      - name: httpdlog
+        emptyDir: {}
+      {{- if .Values.tlsSecretName }}
+      - name: tls-secret-volume
+        secret:
+          secretName: {{ .Values.tlsSecretName }}
+          items:
+            - key: tls.crt
+              path: hostcert.pem
+            - key: tls.key
+              path: hostkey.pem
+      {{- end }}
+      {{- if .Values.policyPackages.enabled }}
+      - name: policy-package-volume
+      {{- if .Values.policyPackages.ephemeralVolume }}
+        emptyDir: {}
+      {{- else }}
+        persistentVolumeClaim:
+          claimName: {{ include "rucio.pvc.claimName" . }}
+      {{- end }}
+      {{- end }}
+      {{- range $key, $val := .Values.secretMounts }}
+      - name: {{ coalesce $val.volumeName $val.secretName $val.secretFullName }}
+        secret:
+          secretName: {{ coalesce $val.secretFullName (printf "%s-%s" $.Release.Name $val.secretName) }}
+          {{- if $val.defaultMode }}
+          defaultMode: {{ $val.defaultMode }}
+          {{- end }}
+          {{- if $val.items }}
+          items:
+{{ toYaml $val.items | indent 12 }}
+          {{- end }}
+      {{- end}}
+      {{- range $key, $val := .Values.persistentVolumes }}
+      - name: {{ $key }}
+        persistentVolumeClaim:
+          claimName: {{ $val.name }}
+      {{- end}}
+      {{- range $collection := tuple .Values.hostPathMounts }}
+      {{- range $key, $val := $collection }}
+      - name: {{ $val.volumeName | default (printf "a%s" ($val.mountPath | sha1sum)) }}
+        hostPath:
+          {{- if $val.type }}
+          type: {{ $val.type }}
+          {{- end}}
+          path: {{ $val.hostPath }}
+      {{- end}}
+      {{- end}}
+{{- if .Values.useDeprecatedImplicitSecrets }}
+{{- if .Values.useSSL }}
+      - name: hostcert
+        secret:
+          secretName: {{ .Release.Name }}-server-hostcert
+      - name: hostkey
+        secret:
+          secretName: {{ .Release.Name }}-server-hostkey
+      - name: cafile
+        secret:
+          secretName: {{ .Release.Name }}-server-cafile
+{{- end }}
+{{- end }}
+{{- if .Values.policyPackages.enabled }}
+      initContainers:
+      - name: install-policy-packages
+        # A slim Python image could be used instead, but using the same image as the base image for the main container ensures that the same Python version is used
+        image: "{{ include "rucio.image.registry" . }}almalinux:9"
+        command:
+          - /bin/bash
+          - -e
+          - -c
+          - |
+            export PYTHONPATH={{ .Values.policyPackages.mountPath }}:$PYTHONPATH
+            {{- range .Values.policyPackages.packages }}
+            if python3 -c "from importlib.metadata import version; assert version({{ .moduleName | squote }}) == {{ .version | squote }}"; then
+                echo "module {{ .moduleName }} version {{ .version }} is already installed"
+            else
+                if [[ {{ .requirement | squote }} == git+* ]]; then
+                    dnf install --assumeyes git
+                fi
+                dnf install --assumeyes python-pip
+                pip uninstall --yes {{ .moduleName }}
+                pip install {{ .requirement }} --target {{ $.Values.policyPackages.mountPath }}
+            fi
+            {{- end }}
+        volumeMounts:
+        - name: policy-package-volume
+          mountPath: {{ .Values.policyPackages.mountPath }}
+{{- end }}
+      containers:
+{{- if .Values.exposeErrorLogs }}
+        - name: httpd-error-log
+          image: "{{ include "rucio.image.registry" . }}{{ .Values.errorLog.image }}:{{ .Values.errorLog.tag }}"
+          args: [/bin/sh, -c, 'tail -n+1 -F /var/log/httpd/error_log']
+          volumeMounts:
+          - name: httpdlog
+            mountPath: /var/log/httpd
+          resources:
+{{ toYaml .Values.errorLogsExporterResources | indent 12 }}
+{{- end }}
+{{- if .Values.monitoring.enabled }}
+        - name: apache-exporter
+          image: "{{ include "rucio.image.registry" . }}rucio/apache_exporter"
+{{- if .Values.useSSL }}
+          args: ['--telemetry.address=:{{ .Values.monitoring.exporterPort }}', '--scrape_uri=https://localhost/server-status/?auto', '--insecure']
+{{ else }}
+          args: ['--telemetry.address=:{{ .Values.monitoring.exporterPort }}']
+{{ end }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.monitoring.exporterPort }}
+              protocol: TCP
+          resources:
+{{ toYaml .Values.metricsExporterResources | indent 12 }}
+{{- end }}
+        - name: {{ .Chart.Name }}
+          image: "{{ include "rucio.image.registry" . }}{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          resources:
+{{ toYaml .Values.serverResources | indent 12 }}
+          volumeMounts:
+          - name: config
+            mountPath: /opt/rucio/etc/conf.d/10_common.json
+            subPath: common.json
+          {{- if .Values.useDeprecatedImplicitSecrets }}
+          {{- if .Values.ftsRenewal.enabled }}
+          - name: proxy-volume
+            mountPath: /opt/proxy
+          - name: ca-volume
+            mountPath: /opt/certs
+          {{- end }}
+          {{- end }}
+          {{- if .Values.tlsSecretName }}
+          - name: tls-secret-volume
+            mountPath: /etc/grid-security/hostcert.pem
+            subPath: hostcert.pem
+            readOnly: true
+          - name: tls-secret-volume
+            mountPath: /etc/grid-security/hostkey.pem
+            subPath: hostkey.pem
+            readOnly: true
+          {{- end }}
+          {{- if .Values.policyPackages.enabled }}
+          - name: policy-package-volume
+            mountPath: {{ .Values.policyPackages.mountPath }}
+          {{- end }}
+          - name: httpdlog
+            mountPath: /var/log/httpd
+          {{- range $key, $val := .Values.secretMounts }}
+          {{- /* TODO: depreacte and remove support for subPaths (at plural) case */}}
+          {{-  if $val.subPaths }}
+          {{-   range $val.subPaths }}
+          - name: {{ coalesce $val.volumeName $val.secretName $val.secretFullName }}
+            mountPath: {{ $val.mountPath }}{{ . }}
+            subPath: {{ . }}
+          {{-   end}}
+          {{-  else }}
+          - name: {{ coalesce $val.volumeName $val.secretName $val.secretFullName }}
+            mountPath: {{ $val.mountPath }}
+            subPath: {{ $val.subPath }}
+          {{-  end}}
+          {{- end}}
+          {{- range $key, $val := .Values.persistentVolumes }}
+          - name: {{ $key }}
+            mountPath: {{ $val.mountPath }}
+          {{- end}}
+          {{- range $collection := tuple .Values.hostPathMounts }}
+          {{- range $key, $val := $collection }}
+          - name: {{ $val.volumeName | default (printf "a%s" ($val.mountPath | sha1sum)) }}
+            mountPath: {{ $val.mountPath }}
+            readOnly: {{ $val.readOnly | default false }}
+          {{- end}}
+          {{- end}}
+{{- if .Values.useDeprecatedImplicitSecrets }}
+{{- if .Values.useSSL }}
+          - name: hostcert
+            mountPath: /etc/grid-security/hostcert.pem
+            subPath: hostcert.pem
+          - name: hostkey
+            mountPath: /etc/grid-security/hostkey.pem
+            subPath: hostkey.pem
+          - name: cafile
+            mountPath: /etc/grid-security/ca.pem
+            subPath: ca.pem
+{{- end }}
+{{- end }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            - name: https
+              containerPort: 443
+              protocol: TCP
+{{- if .Values.useSSL }}
+            - name: health
+              containerPort: 444
+              protocol: TCP
+{{- else }}
+            - name: health
+              containerPort: 81
+              protocol: TCP
+{{- end }}
+{{- if .Values.monitoring.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.monitoring.nativeMetricsPort }}
+              protocol: TCP
+{{- end }}
+          readinessProbe:
+            httpGet:
+              path: /ping
+{{- if .Values.useSSL }}
+              port: 444
+              scheme: HTTPS
+{{- else }}
+              port: 81
+{{- end }}
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+          livenessProbe:
+            httpGet:
+              path: /ping
+{{- if .Values.useSSL }}
+              port: 444
+              scheme: HTTPS
+{{- else }}
+              port: 81
+{{- end }}
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+          env:
+            {{- range $key, $val := .Values.httpd_config }}
+            - name: RUCIO_HTTPD_{{ $key | upper }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ template "rucio.fullname" $ }}.cfg
+                  key: {{ $key }}
+            {{- end}}
+            {{- range $key1, $val1 := .Values.optional_config }}
+            - name: {{ $key1 | upper }}
+              value: "{{ $val1  }}"
+            {{- end}}
+            {{- if .Values.policyPackages.enabled}}
+            - name: PYTHONPATH
+              value: {{.Values.policyPackages.mountPath}}
+            {{- end}}
+{{- if .Values.useSSL }}
+            - name: RUCIO_ENABLE_SSL
+              value: "True"
+            - name: RUCIO_HEALTH_CHECK_PORT
+              value: "444"
+{{- else }}
+            - name: RUCIO_ENABLE_SSL
+              value: "False"
+            - name: RUCIO_HEALTH_CHECK_PORT
+              value: "81"
+{{- end }}
+{{- if .Values.monitoring.enabled }}
+            - name: RUCIO_METRICS_PORT
+              value: "{{ .Values.monitoring.nativeMetricsPort }}"
+{{- end }}
+            - name: RUCIO_SERVER_TYPE
+              value: "{{ .Values.serverType }}"
+            - name: RUCIO_OVERRIDE_CONFIGS
+              value: "/opt/rucio/etc/conf.d/"
+            - name: RUCIO_LOG_FORMAT
+              value: '{{ .Values.logFormat }}'
+            - name: RUCIO_WSGI_DAEMON_PROCESSES
+              value: "{{ .Values.wsgi.daemonProcesses }}"
+            - name: RUCIO_WSGI_DAEMON_THREADS
+              value: "{{ .Values.wsgi.daemonThreads }}"
+{{- with .Values.additionalEnvs }}
+{{ toYaml . | indent 12 }}
+{{- end}}
+{{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml . | indent 6 }}
+{{- end}}
+    {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+      affinity:
+    {{- if eq (coalesce .Values.service.externalTrafficPolicy "Cluster" | lower) "local" }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: "kubernetes.io/hostname"
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - {{ template "rucio.name" . }}
+                    - key: release
+                      operator: In
+                      values:
+                        - {{ .Release.Name }}
+    {{- end }}
+    {{- with .Values.affinity }}
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+{{- end }}

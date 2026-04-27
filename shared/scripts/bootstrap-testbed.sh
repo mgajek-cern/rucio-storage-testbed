@@ -191,7 +191,24 @@ configure_rses() {
 
 setup_fts_oidc_provider() {
     echo "=== Registering Keycloak in FTS Database ==="
-    _exec ftsdb-oidc mysql -ufts -pfts fts -e "
+
+    echo "  Waiting for fts.t_token_provider schema..."
+    for i in $(seq 1 60); do
+        if _exec ftsdb-oidc mysql -h 127.0.0.1 --protocol=tcp -ufts -pfts fts \
+            -e "SELECT 1 FROM t_token_provider LIMIT 1" >/dev/null 2>&1; then
+            echo "  ✓ Schema ready"
+            break
+        fi
+        if [ "$i" = "60" ]; then
+            echo "  ✗ Schema never appeared — fts-oidc may not have started"
+            _exec ftsdb-oidc mysql -h 127.0.0.1 --protocol=tcp -ufts -pfts fts \
+                -e "SHOW TABLES" || true
+            exit 1
+        fi
+        sleep 5
+    done
+
+    _exec ftsdb-oidc mysql -h 127.0.0.1 --protocol=tcp -ufts -pfts fts -e "
     INSERT IGNORE INTO t_token_provider (name, issuer, client_id, client_secret)
     VALUES
       ('keycloak-rucio',       'https://keycloak:8443/realms/rucio',  'rucio-oidc', 'rucio-oidc-secret'),

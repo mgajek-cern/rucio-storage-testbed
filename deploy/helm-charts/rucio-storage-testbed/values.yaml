@@ -82,8 +82,21 @@ ruciodbOidc:
       size: 2Gi
 
 # ===========================================================================
-# RUCIO SERVERS — upstream rucio/rucio-server chart
+# RUCIO SERVERS — local fork of upstream rucio/rucio-server chart
+# (file://../rucio-server). The fork adds `items:` support to secretMounts.
 # ===========================================================================
+#
+# Cert mount strategy:
+#   - The X.509 client code in rucio refuses to use hostkey.pem if it is
+#     world/group readable. Helm's `defaultMode` on a Secret volume applies
+#     ONLY to directory mounts; subPath mounts always come out as 0644 and
+#     k8s blocks chmod on subPath-mounted Secret files (read-only fs).
+#   - Therefore the cert files are mounted as a single DIRECTORY at
+#     /etc/grid-security with defaultMode 0400, using `items:` to map keys
+#     to their canonical paths (rucio_ca.pem also lands under
+#     certificates/ as both rucio_ca.pem and the hash-named alias).
+#   - Config files stay on subPath because they don't need 0400 (and
+#     stripping subPath would force a directory mount on a different path).
 
 rucio:
   enabled: true
@@ -99,27 +112,28 @@ rucio:
     port: 80
     targetPort: 80
   useDeprecatedImplicitSecrets: false
+
+  additionalEnvs:
+    - name: REQUESTS_CA_BUNDLE
+      value: /etc/grid-security/certificates/rucio_ca.pem
+    - name: SSL_CERT_FILE
+      value: /etc/pki/tls/certs/ca-bundle.crt
+
   secretMounts:
+    # All grid certs in one Secret-backed directory mount.
+    # defaultMode 0400 honored because there is NO subPath here.
     - secretFullName: testbed-certs
-      volumeName: certs-hostcert
-      mountPath: /etc/grid-security/hostcert.pem
-      subPath: hostcert.pem
-    - secretFullName: testbed-certs
-      volumeName: certs-hostkey
-      mountPath: /etc/grid-security/hostkey.pem
-      subPath: hostkey.pem
-    - secretFullName: testbed-certs
-      volumeName: certs-ca-hash
-      mountPath: /etc/grid-security/certificates/5fca1cb1.0
-      subPath: rucio_ca.pem
-    - secretFullName: testbed-certs
-      volumeName: certs-ca-pem
-      mountPath: /etc/grid-security/certificates/rucio_ca.pem
-      subPath: rucio_ca.pem
-    - secretFullName: testbed-certs
-      volumeName: certs-hostcert-with-key
-      mountPath: /etc/grid-security/hostcert_with_key.pem
-      subPath: hostcert_with_key.pem
+      volumeName: certs-grid
+      mountPath: /etc/grid-security
+      defaultMode: 0600
+      items:
+        - { key: hostcert.pem,          path: hostcert.pem }
+        - { key: hostkey.pem,           path: hostkey.pem }
+        - { key: hostcert_with_key.pem, path: hostcert_with_key.pem }
+        - { key: rucio_ca.pem,          path: certificates/rucio_ca.pem }
+        - { key: rucio_ca.pem,          path: certificates/5fca1cb1.0 }
+
+    # Rucio config files — subPath fine, modes don't matter
     - secretFullName: rucio-server-cfg
       volumeName: rucio-cfg-server
       mountPath: /opt/rucio/etc/rucio.cfg
@@ -143,27 +157,27 @@ rucio:
     port: 80
     targetPort: 80
   useDeprecatedImplicitSecrets: false
+
+  additionalEnvs:
+    - name: REQUESTS_CA_BUNDLE
+      value: /etc/grid-security/certificates/rucio_ca.pem
+    - name: SSL_CERT_FILE
+      value: /etc/pki/tls/certs/ca-bundle.crt
+
   secretMounts:
+    # Same directory mount as the GSI server
     - secretFullName: testbed-certs
-      volumeName: certs-hostcert
-      mountPath: /etc/grid-security/hostcert.pem
-      subPath: hostcert.pem
-    - secretFullName: testbed-certs
-      volumeName: certs-hostkey
-      mountPath: /etc/grid-security/hostkey.pem
-      subPath: hostkey.pem
-    - secretFullName: testbed-certs
-      volumeName: certs-ca-hash
-      mountPath: /etc/grid-security/certificates/5fca1cb1.0
-      subPath: rucio_ca.pem
-    - secretFullName: testbed-certs
-      volumeName: certs-ca-pem
-      mountPath: /etc/grid-security/certificates/rucio_ca.pem
-      subPath: rucio_ca.pem
-    - secretFullName: testbed-certs
-      volumeName: certs-hostcert-with-key
-      mountPath: /etc/grid-security/hostcert_with_key.pem
-      subPath: hostcert_with_key.pem
+      volumeName: certs-grid
+      mountPath: /etc/grid-security
+      defaultMode: 0600
+      items:
+        - { key: hostcert.pem,          path: hostcert.pem }
+        - { key: hostkey.pem,           path: hostkey.pem }
+        - { key: hostcert_with_key.pem, path: hostcert_with_key.pem }
+        - { key: rucio_ca.pem,          path: certificates/rucio_ca.pem }
+        - { key: rucio_ca.pem,          path: certificates/5fca1cb1.0 }
+
+    # Rucio OIDC config files
     - secretFullName: rucio-oidc-server-cfg
       volumeName: rucio-cfg-server
       mountPath: /opt/rucio/etc/rucio.cfg
@@ -176,6 +190,8 @@ rucio:
       volumeName: idpsecrets
       mountPath: /opt/rucio/etc/idpsecrets.json
       subPath: idpsecrets.json
+
+    # Python patches
     - secretFullName: testbed-patches
       volumeName: fts3-patch
       mountPath: /usr/local/lib/python3.9/site-packages/rucio/transfertool/fts3.py
@@ -224,7 +240,6 @@ keycloak:
 xrd1:
   enabled: true
   fullnameOverride: xrd1
-  seedTestFile: true   # pre-creates /rucio/fts-test-file
 
 xrd2:
   enabled: true

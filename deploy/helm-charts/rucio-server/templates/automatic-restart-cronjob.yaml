@@ -1,0 +1,30 @@
+{{- if .Values.automaticRestart.enabled -}}
+apiVersion: {{ template "rucio.kubeApiVersion.cronjob" . }}
+kind: CronJob
+metadata:
+  name: {{ template "rucio.fullname" . }}-automatic-restart
+spec:
+  schedule: "{{ .Values.automaticRestart.schedule }}"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: {{ template "rucio.fullname" . }}-rucio-restart
+          containers:
+            - name: restart-pods
+              image: "{{ include "rucio.image.registry" . }}{{ .Values.automaticRestart.image.repository }}:{{ .Values.automaticRestart.image.tag }}"
+              imagePullPolicy: {{ .Values.automaticRestart.image.pullPolicy }}
+              args:
+                - rollout
+                - restart
+                - deployment
+                - --selector
+                - release={{ .Release.Name }},{{ .Values.automaticRestart.selectorLabel }}
+              resources:
+{{ toYaml .Values.automaticRestart.resources | indent 16 }}
+          restartPolicy: OnFailure
+{{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+{{ toYaml . | indent 10 }}
+{{- end}}
+{{ end }}

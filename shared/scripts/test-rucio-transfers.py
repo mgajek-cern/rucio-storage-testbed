@@ -12,6 +12,7 @@ Typical invocations:
 """
 
 import logging
+import os
 import re
 import subprocess
 import time
@@ -26,6 +27,13 @@ from rucio.rse import rsemanager as rsemgr
 
 
 log = logging.getLogger("rucio-transfers")
+
+# Identifies the same skip logic as the bash script
+RUNTIME = os.getenv("RUNTIME", "compose")
+SKIP_GSI = os.getenv("SKIP_GSI", "")
+
+# Logic: Skip if k8s (and SKIP_GSI isn't explicitly set to allow it) OR if SKIP_GSI is "1"
+SHOULD_SKIP_GSI = (RUNTIME == "k8s" and not SKIP_GSI) or SKIP_GSI == "1"
 
 
 # ── Topology ───────────────────────────────────────────────────────────────
@@ -260,6 +268,10 @@ def transfer_workflow(
 
 
 # ── Tests ──────────────────────────────────────────────────────────────────
+@pytest.mark.skipif(
+    SHOULD_SKIP_GSI,
+    reason=f"Skipping XRootD GSI test on {RUNTIME} runtime (SKIP_GSI={SKIP_GSI})",
+)
 def test_xrootd_gsi(client_std, fts_proxy):
     scope, name = "ddmlab", f"gsi-{int(time.time())}"
     transfer_workflow(

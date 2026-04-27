@@ -9,6 +9,11 @@ on:
       label:
         required: true
         type: string
+      runtime:
+        required: false
+        type: string
+        default: compose
+        description: "compose | k8s"
       compose_file:
         required: false
         type: string
@@ -21,7 +26,7 @@ jobs:
     timeout-minutes: 45
     env:
       TESTBED_HOST_SOURCE: ${{ github.workspace }}
-
+      RUNTIME: ${{ inputs.runtime }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -34,13 +39,40 @@ jobs:
       - name: Generate certificates
         run: make certs
 
-      - name: Start stack
+      # ─────────────────────────────────────────────────────────────────
+      # Compose path
+      # ─────────────────────────────────────────────────────────────────
+      - name: Start stack (compose)
+        if: inputs.runtime == 'compose'
         run: docker compose -f ${{ inputs.compose_file }} up -d
 
+      # ─────────────────────────────────────────────────────────────────
+      # k8s path (kind cluster)
+      # ─────────────────────────────────────────────────────────────────
+      - name: Set up kind cluster
+        if: inputs.runtime == 'k8s'
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: rucio-testbed
+
+      - name: Install Helm
+        if: inputs.runtime == 'k8s'
+        uses: azure/setup-helm@v4
+
+      - name: Install testbed (k8s)
+        if: inputs.runtime == 'k8s'
+        run: |
+          kubectl create namespace rucio-testbed
+          make helm-install
+
+      # ─────────────────────────────────────────────────────────────────
+      # Common: bootstrap
+      # ─────────────────────────────────────────────────────────────────
       - name: Bootstrap Rucio (seeds RSEs + token provider + restarts storm/fts-oidc)
         run: make bootstrap
 
-      - name: Wait for fts-oidc
+      - name: Wait for fts-oidc (compose)
+        if: inputs.runtime == 'compose'
         run: |
           for i in $(seq 1 40); do
             code=$(curl -sk -o /dev/null -w '%{http_code}' \
@@ -50,34 +82,71 @@ jobs:
           done
           docker compose -f ${{ inputs.compose_file }} logs fts-oidc; exit 1
 
-      - name: fts-oidc OIDC token auth check
+      - name: Wait for fts-oidc (k8s)
+        if: inputs.runtime == 'k8s'
         run: |
-          # Fetch token from inside fts-oidc container (iss matches registered issuer)
+          kubectl -n rucio-testbed rollout status deploy/fts-oidc --timeout=300s
+          for i in $(seq 1 40); do
+            code=$(kubectl -n rucio-testbed exec deploy/fts-oidc -- \
+              curl -sk -o /dev/null -w '%{http_code}' \
+              https://localhost:8446/whoami) || true
+            [[ "$code" == "200" ]] && { echo "fts-oidc REST ready"; exit 0; }
+            echo "  [$i] HTTP $code"; sleep 5
+          done
+          kubectl -n rucio-testbed logs deploy/fts-oidc --tail=200; exit 1
+
+      - name: fts-oidc OIDC token auth check (compose)
+        if: inputs.runtime == 'compose'
+        run: |
           TOKEN=$(docker exec compose-fts-oidc-1 curl -sk \
             -u "rucio-oidc:rucio-oidc-secret" \
             -d "grant_type=password&username=randomaccount&password=secret" \
             https://keycloak:8443/realms/rucio/protocol/openid-connect/token \
             | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
           [ -z "$TOKEN" ] && { echo "Failed to obtain token"; exit 1; }
-
           RESP=$(curl -sk --cacert certs/rucio_ca.pem \
             -H "Authorization: Bearer $TOKEN" \
             https://localhost:8447/whoami)
           echo "whoami response: $RESP"
-
           METHOD=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('method',''))")
           [ "$METHOD" = "oauth2" ] || { echo "Expected method=oauth2, got: $METHOD"; exit 1; }
           echo "fts-oidc OIDC auth OK (method=$METHOD)"
 
-      - name: XRootD TPC test
+      - name: fts-oidc OIDC token auth check (k8s)
+        if: inputs.runtime == 'k8s'
+        run: |
+          TOKEN=$(kubectl -n rucio-testbed exec deploy/fts-oidc -- curl -sk \
+            -u "rucio-oidc:rucio-oidc-secret" \
+            -d "grant_type=password&username=randomaccount&password=secret" \
+            https://keycloak:8443/realms/rucio/protocol/openid-connect/token \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+          [ -z "$TOKEN" ] && { echo "Failed to obtain token"; exit 1; }
+          RESP=$(kubectl -n rucio-testbed exec deploy/fts-oidc -- curl -sk \
+            -H "Authorization: Bearer $TOKEN" \
+            https://localhost:8446/whoami)
+          echo "whoami response: $RESP"
+          METHOD=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('method',''))")
+          [ "$METHOD" = "oauth2" ] || { echo "Expected method=oauth2, got: $METHOD"; exit 1; }
+          echo "fts-oidc OIDC auth OK (method=$METHOD)"
+
+      # ─────────────────────────────────────────────────────────────────
+      # Tests — split between "always run" and "compose-only"
+      # See KNOWN_ISSUES.md for the rationale on the k8s skips.
+      # ─────────────────────────────────────────────────────────────────
+
+      - name: XRootD TPC test (GSI)
+        if: inputs.runtime == 'compose'
         run: make test-xrootd-gsi
 
       - name: S3 / MinIO test
+        if: inputs.runtime == 'compose'
         run: make test-s3
 
       - name: WebDAV test
+        if: inputs.runtime == 'compose'
         run: make test-webdav
 
+      # OIDC-based tests run on both runtimes
       - name: StoRM WebDAV HTTP TPC test (OIDC token, no GSI)
         run: make test-storm
 
@@ -87,17 +156,38 @@ jobs:
       - name: Rucio E2E transfer test
         run: make test-rucio
 
-      - name: Rucio E2E transfer test (Python)
+      - name: Rucio E2E transfer test (using Python rucio-clients)
         run: make test-rucio-python
 
-      - name: Dump logs on failure
-        if: failure()
+      # ─────────────────────────────────────────────────────────────────
+      # Diagnostics
+      # ─────────────────────────────────────────────────────────────────
+      - name: Dump logs on failure (compose)
+        if: failure() && inputs.runtime == 'compose'
         run: |
           for svc in fts fts-oidc xrd1 xrd2 rucio rucio-oidc keycloak webdav1 storm1 storm2 minio1; do
             echo "=== $svc ===" && \
             docker compose -f ${{ inputs.compose_file }} logs $svc 2>/dev/null || true
           done
 
-      - name: Tear down
-        if: always()
+      - name: Dump logs on failure (k8s)
+        if: failure() && inputs.runtime == 'k8s'
+        run: |
+          echo "=== Pod status ==="
+          kubectl -n rucio-testbed get pods -o wide
+          echo "=== Recent events ==="
+          kubectl -n rucio-testbed get events --sort-by=.lastTimestamp | tail -50
+          for deploy in fts fts-oidc xrd1 xrd2 xrd3 xrd4 rucio rucio-oidc keycloak webdav1 storm1 storm2 minio1; do
+            echo "=== $deploy ==="
+            kubectl -n rucio-testbed logs deploy/$deploy --tail=200 2>/dev/null || true
+          done
+
+      - name: Tear down (compose)
+        if: always() && inputs.runtime == 'compose'
         run: docker compose -f ${{ inputs.compose_file }} down -v
+
+      - name: Tear down (k8s)
+        if: always() && inputs.runtime == 'k8s'
+        run: |
+          helm uninstall testbed -n rucio-testbed || true
+          kubectl delete namespace rucio-testbed --ignore-not-found

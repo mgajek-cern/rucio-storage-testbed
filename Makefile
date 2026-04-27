@@ -119,8 +119,12 @@ test-rucio: ## Rucio E2E transfer test (bash version)
 	./shared/scripts/test-rucio-transfers.sh
 
 .PHONY: test-rucio-python
-test-rucio-python: ## Rucio E2E transfer test (Python, runs in rucio-client container)
+test-rucio-python: ## Rucio E2E transfer test (Python, compose only)
+ifeq ($(RUNTIME), k8s)
+	@echo "[SKIP] test-rucio-python is compose-only; use 'make test-rucio RUNTIME=k8s'"
+else
 	$(EXEC_RUCIO) bash -c "pytest /scripts/test-rucio-transfers.py"
+endif
 
 .PHONY: test-xrootd-gsi
 test-xrootd-gsi: ## XRootD TPC test with X.509 GSI

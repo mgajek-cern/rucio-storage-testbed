@@ -99,6 +99,7 @@ spec:
         - name: certs
           secret:
             secretName: {{ .Values.certsSecret }}
+            defaultMode: 0600
         - name: scripts
           configMap:
             name: {{ .Values.scriptsConfigMap }}

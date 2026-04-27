@@ -27,15 +27,16 @@ spec:
           env:
             - name: XRDPORT
               value: {{ .Values.xrdPort | quote }}
-          {{- if .Values.seedTestFile }}
-          command: ["bash", "-c"]
-          args:
-            - |
-              mkdir -p /rucio &&
-              echo 'fts-test' > /rucio/fts-test-file &&
-              chown xrootd:xrootd /rucio/fts-test-file &&
-              exec /docker-entrypoint.sh
-          {{- end }}
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - |
+                    mkdir -p /rucio
+                    echo 'fts-test' > /rucio/fts-test-file
+                    chown xrootd:xrootd /rucio/fts-test-file
           ports:
             - name: xrootd
               containerPort: {{ .Values.xrdPort }}
