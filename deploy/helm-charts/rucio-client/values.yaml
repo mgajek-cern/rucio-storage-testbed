@@ -1,11 +1,8 @@
 # Rucio client pod — mirrors the rucio-client service in docker-compose.
-# The compose version mounts /var/run/docker.sock for "docker-in-docker" tests;
-# we drop that by default because mounting the node socket is cluster-specific
-# and usually disallowed. Set hostDockerSocket.enabled=true if you really
-# need it.
+# The compose version mounts /var/run/docker.sock for "docker-in-docker" tests; the Kubernetes version enables kubectl usage within the pod.
 
 image:
-  repository: mgajekcern/rucio-client-dind
+  repository: mgajekcern/rucio-client-docker-kubectl
   tag: latest
   pullPolicy: IfNotPresent
 
@@ -26,10 +23,6 @@ certsSecret: testbed-certs
 configsConfigMap: testbed-configs
 # Contains all test scripts
 scriptsConfigMap: testbed-scripts
-
-hostDockerSocket:
-  enabled: false
-  path: /var/run/docker.sock
 
 resources: {}
 

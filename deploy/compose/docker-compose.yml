@@ -525,7 +525,7 @@ services:
   rucio-client:
     build:
       context: ${TESTBED_HOST_SOURCE}
-      dockerfile: deploy/compose/Dockerfile.rucio-client-dind
+      dockerfile: deploy/compose/Dockerfile.rucio-client-docker-kubectl
     hostname: rucio-client
     depends_on:
       rucio:

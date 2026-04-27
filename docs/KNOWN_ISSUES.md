@@ -71,8 +71,6 @@ Resolution likely requires either:
 compose CI matrix, so regressions in the GSI auth path itself would be
 caught.
 
----
-
 ## S3 / MinIO test: HTTP 400 on VO grant (k8s)
 
 **Status:** Open. Likely a quick fix but unverified.
@@ -92,8 +90,6 @@ configured with on k8s (the OIDC FTS instance shows
 Investigate by capturing the request body and rucio-oidc server logs
 during the call.
 
----
-
 ## WebDAV transfer fails on k8s
 
 **Status:** Same root cause as XRootD GSI (likely).
@@ -108,3 +104,16 @@ source_se: root://xrd1
 The transfer is `xrd1 → webdav1`, and the source-side failure is GSI
 against xrd1 — the same path that fails in `test-xrootd-gsi`. Once GSI
 is resolved, this likely resolves with it.
+
+## rucio-client pod has cluster exec permissions on k8s
+
+The `rucio-client` pod ships with `kubectl` and a ServiceAccount that
+grants `get`/`list`/`create` on `pods/exec`, `pods`, and `deployments`
+within the testbed namespace. This lets `test-rucio-transfers.py`
+orchestrate seed/setup operations against storage and FTS pods the
+same way the compose version uses the docker socket.
+
+This is appropriate for a development testbed but should be reviewed
+before adopting the chart in shared or production-adjacent clusters.
+The ServiceAccount is namespace-scoped (Role/RoleBinding, not Cluster*),
+so blast radius is limited to the testbed namespace.

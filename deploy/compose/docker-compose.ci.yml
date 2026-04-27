@@ -515,7 +515,7 @@ services:
       retries: 20
 
   rucio-client:
-    image: mgajekcern/rucio-client-dind:latest
+    image: mgajekcern/rucio-client-docker-kubectl:latest
     hostname: rucio-client
     depends_on:
       rucio:

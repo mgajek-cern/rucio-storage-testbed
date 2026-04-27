@@ -73,7 +73,7 @@ compose-logs-%: ## Tail logs from a single service, e.g. `make compose-logs-ruci
 	$(COMPOSE) logs -f --tail=100 $*
 
 .PHONY: compose-build
-compose-build: ## Build local Docker images (fts, xrd-scitokens, rucio-client-dind)
+compose-build: ## Build local Docker images (fts, xrd-scitokens, rucio-client-docker-kubectl)
 	$(COMPOSE) build
 
 .PHONY: bootstrap
@@ -119,12 +119,8 @@ test-rucio: ## Rucio E2E transfer test (bash version)
 	./shared/scripts/test-rucio-transfers.sh
 
 .PHONY: test-rucio-python
-test-rucio-python: ## Rucio E2E transfer test (Python, compose only)
-ifeq ($(RUNTIME), k8s)
-	@echo "[SKIP] test-rucio-python is compose-only; use 'make test-rucio RUNTIME=k8s'"
-else
-	$(EXEC_RUCIO) bash -c "pytest /scripts/test-rucio-transfers.py"
-endif
+test-rucio-python: ## Rucio E2E transfer test (Python, runs in rucio-client pod)
+	$(EXEC_RUCIO) bash -c "RUNTIME=$(RUNTIME) K8S_NAMESPACE=$(K8S_NAMESPACE) pytest /scripts/test-rucio-transfers.py"
 
 .PHONY: test-xrootd-gsi
 test-xrootd-gsi: ## XRootD TPC test with X.509 GSI

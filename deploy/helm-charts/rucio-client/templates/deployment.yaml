@@ -17,6 +17,7 @@ spec:
         release: {{ .Release.Name }}
     spec:
       hostname: {{ include "rucio-client.fullname" . }}
+      serviceAccountName: {{ include "rucio-client.fullname" . }}
       containers:
         - name: client
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -32,6 +33,10 @@ spec:
                 pytest &&
               sleep infinity
           env:
+            - name: K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}
@@ -68,11 +73,6 @@ spec:
             - name: scripts
               mountPath: /scripts
               readOnly: true
-            {{- if .Values.hostDockerSocket.enabled }}
-            - name: docker-sock
-              mountPath: /var/run/docker.sock
-              readOnly: true
-            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:
@@ -87,12 +87,6 @@ spec:
           configMap:
             name: {{ .Values.scriptsConfigMap }}
             defaultMode: 0755
-        {{- if .Values.hostDockerSocket.enabled }}
-        - name: docker-sock
-          hostPath:
-            path: {{ .Values.hostDockerSocket.path }}
-            type: Socket
-        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

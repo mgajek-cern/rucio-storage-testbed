@@ -76,7 +76,7 @@ Stack lifecycle (compose-*)
   compose-ps                 List running containers
   compose-logs               Tail logs from all services (Ctrl-C to exit)
   compose-logs-%             Tail logs from a single service, e.g. `make compose-logs-rucio`
-  compose-build              Build local Docker images (fts, xrd-scitokens, rucio-client-dind)
+  compose-build              Build local Docker images (fts, xrd-scitokens, rucio-client-docker-kubectl)
   bootstrap                  Bootstrap Rucio (uses $RUNTIME — set RUNTIME=k8s for kubernetes)
 
 Helm / Kubernetes lifecycle (helm-*, k8s-*)

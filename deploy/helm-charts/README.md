@@ -30,7 +30,7 @@ helm-charts/
 ├── webdav/                       # rucio/test-webdav (Apache + WebDAV)
 ├── minio/                        # minio/minio + mc init Job
 ├── keycloak/                     # quay.io/keycloak/keycloak
-└── rucio-client/                 # Custom image (Dockerfile.rucio-client-dind)
+└── rucio-client-docker-kubectl/  # Custom image (Dockerfile.rucio-client-docker-kubectl)
 ```
 
 `ruciodb` / `ruciodb-oidc` reuse `bitnami/postgresql`, and the two Rucio
