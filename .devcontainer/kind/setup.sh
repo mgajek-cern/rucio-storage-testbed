@@ -26,12 +26,59 @@ check_requirements() {
 install_java() {
     if ! command -v keytool &> /dev/null; then
         echo -e "${BLUE}Installing OpenJDK (required for certificate generation)...${NC}"
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq default-jdk-headless
+        apt-get update -qq
+        apt-get install -y -qq default-jdk-headless
         echo -e "${GREEN}OpenJDK installed successfully${NC}\n"
     else
         echo -e "${GREEN}Java/Keytool already installed${NC}\n"
     fi
+}
+
+install_python_environment() {
+    echo -e "${BLUE}Setting up Python environment (system + pip deps)...${NC}"
+
+    # System deps (needed for building things like M2Crypto)
+    echo -e "${CYAN}Installing system build dependencies...${NC}"
+    apt-get update -qq
+    apt-get install -y -qq \
+        python3 \
+        python3-pip \
+        python3-dev \
+        build-essential \
+        swig \
+        libssl-dev
+
+    # Sanity checks
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo -e "${RED}python3 not found after install${NC}"
+        exit 1
+    fi
+
+    if ! command -v pip3 >/dev/null 2>&1; then
+        echo -e "${RED}pip3 not found after install${NC}"
+        exit 1
+    fi
+
+    # Python deps
+    echo -e "${CYAN}Installing Python packages...${NC}"
+
+    python3 -m pip install --upgrade pip
+
+    python3 -m pip install \
+        yamllint==1.37.1 \
+        pytest \
+        fts3 \
+        rucio-clients \
+        --break-system-packages
+
+    # Verification
+    echo -e "${CYAN}Verifying M2Crypto installation...${NC}"
+    python3 - <<EOF
+import M2Crypto
+print("M2Crypto OK")
+EOF
+
+    echo -e "${GREEN}Python environment ready${NC}\n"
 }
 
 install_kind() {
@@ -39,7 +86,7 @@ install_kind() {
     echo -e "${BLUE}Installing Kind $KIND_RELEASE...${NC}"
     curl -Lo ./kind "https://kind.sigs.k8s.io/dl/$KIND_RELEASE/kind-linux-${ARCH}"
     chmod +x ./kind
-    sudo mv ./kind /usr/local/bin/kind
+    mv ./kind /usr/local/bin/kind
 
     kind delete cluster --name kind || true
     echo -e "${BLUE}Creating kind cluster...${NC}"
@@ -64,7 +111,7 @@ install_chart_testing() {
         "https://github.com/helm/chart-testing/releases/download/$CT_VERSION/chart-testing_${CT_VERSION#v}_linux_${ARCH}.tar.gz"
 
     tar -xzf "$tmp/ct.tar.gz" -C "$tmp"
-    sudo install -m 0755 "$tmp/ct" /usr/local/bin/ct
+    install -m 0755 "$tmp/ct" /usr/local/bin/ct
 
     echo -e "${BLUE}Installing Python dependencies...${NC}"
     pip install yamllint==1.37.1
@@ -106,6 +153,7 @@ echo -e "${BLUE}╚════════════════════�
 
 check_requirements
 install_java
+install_python_environment
 install_kind
 install_chart_testing
 generate_configs
