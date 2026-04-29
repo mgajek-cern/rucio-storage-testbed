@@ -63,7 +63,7 @@ make test-all-k8s
 
 ```bash
 make help
-...
+
   help                       Show this help (default target)
 
 Setup
@@ -127,14 +127,27 @@ sequenceDiagram
     User->>RS: Add Rule + JWT
 
     NOTE over RS: Conveyor identifies need for transfer
-    RS->>KC: Refresh User Token (or Fetch Service Token)
-    KC-->>RS: Valid Bearer Token
+    RS->>KC: Request FTS-audience token (f)
+    KC-->>RS: Token f
+    RS->>KC: Request source RSE token (s)
+    KC-->>RS: Token s
+    RS->>KC: Request destination RSE token (d)
+    KC-->>RS: Token d
 
-    RS->>FTS: Submit Job + Bearer Token
-    FTS->>SE: TPC Request + Bearer Token
-    SE->>KC: Validate Token (Introspection/Keys)
+    RS->>FTS: Submit transfer + tokens (f, s, d)
+
+    NOTE over FTS,KC: FTS refreshes s and d<br/>for the job lifetime
+    FTS->>KC: Refresh token s
+    KC-->>FTS: Renewed s
+    FTS->>KC: Refresh token d
+    KC-->>FTS: Renewed d
+
+    FTS->>SE: TPC Request + tokens s, d
+    SE->>KC: Validate token (Introspection/JWKS)
     SE-->>FTS: Transfer Started
 ```
+
+> Token orchestration follows the design described in [Rucio Token Workflow Evolution](https://rucio.cern.ch/documentation/files/Rucio_Tokens_v0.1.pdf). Rucio acquires separate tokens for FTS authentication and for source/destination storage access, then bundles all three into the FTS submission. FTS is responsible only for refreshing the storage-scoped tokens during the transfer lifetime.
 
 **NOTE:** In the [test-rucio-transfers.sh](./shared/scripts/test-rucio-transfers.sh) script, we trigger the rule creation using `USERPASS` authentication to avoid the manual browser redirects required by a full OIDC login. Once the rule exists, the Rucio Conveyor daemons internally handle the OIDC token orchestration, fetching the necessary bearer tokens from Keycloak to submit the transfer job to FTS automatically.
 
