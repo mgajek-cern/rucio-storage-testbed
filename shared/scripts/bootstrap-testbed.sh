@@ -224,17 +224,6 @@ setup_fts_oidc_provider() {
     done
 }
 
-delegate_gsi_proxies() {
-    echo "=== Delegating GSI proxies to FTS ==="
-    for url in "$FTS" "$FTS_OIDC"; do
-        _exec fts python3 -c "
-import datetime, fts3.rest.client.easy as fts3
-ctx = fts3.Context('$url', ucert='/etc/grid-security/hostcert.pem', ukey='/etc/grid-security/hostkey.pem', verify=False)
-fts3.delegate(ctx, lifetime=datetime.timedelta(hours=48), force=True)
-" 2>/dev/null || echo "  ⚠ Delegation to $url failed (non-fatal)"
-    done
-}
-
 # ── Scopes & Quotas ─────────────────────────────────────────────────────────
 
 setup_scopes_and_quotas() {
@@ -269,7 +258,6 @@ main() {
     setup_scopes_and_quotas
     setup_fts_oidc_provider
     restart_storm_nodes "Final JWKS Sync"
-    delegate_gsi_proxies
 
     echo -e "\n=== Bootstrap Complete ==="
 }
