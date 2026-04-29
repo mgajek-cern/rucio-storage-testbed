@@ -14,17 +14,19 @@ CACERT=./certs/rucio_ca.pem
 storm_dav_curl() {
     local target=$1 use_token=$2
     shift 2
-    local auth=()
-    [[ "$use_token" == "true" ]] && auth=(-H "Authorization: Bearer $TOKEN")
+
+    local -a auth
+    if [[ "$use_token" == "true" ]]; then
+        auth=(-H "Authorization: Bearer $TOKEN")
+    else
+        auth=()
+    fi
 
     case "$RUNTIME" in
         compose)
-            # storm[12]:8443 is only resolvable inside the compose network,
-            # so we curl from inside one of the storm pods themselves.
-            _exec "$target" curl -sk "${auth[@]}" "$@" ;;
+            _exec "$target" curl -sk "${auth[@]+"${auth[@]}"}" "$@" ;;
         k8s)
-            # In-cluster DNS works from any pod; fts-oidc has the CA bundle.
-            _exec fts-oidc curl -sk "${auth[@]}" "$@" ;;
+            _exec fts-oidc curl -sk "${auth[@]+"${auth[@]}"}" "$@" ;;
     esac
 }
 
