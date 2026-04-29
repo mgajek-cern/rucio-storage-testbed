@@ -51,9 +51,11 @@ generate_service_certs() {
     chmod 600 "$CERTS/hostkey.pem" "$CERTS/hostcert_with_key.pem"
 
     # XRootD (Shared by xrd1, xrd2, xrd3, xrd4)
-    write_ext_file /tmp/xrd-ext.cnf "xrd1,xrd2,xrd3,xrd4,localhost" both
-    mint_cert "xrd" "xrd-storage" /tmp/xrd-ext.cnf
-    chmod 600 "$CERTS/xrdkey.pem"
+    for host in xrd1 xrd2 xrd3 xrd4; do
+        write_ext_file "/tmp/${host}-ext.cnf" "${host},${host}.rucio-testbed.svc.cluster.local,localhost" both
+        mint_cert "${host}" "${host}" "/tmp/${host}-ext.cnf"
+        chmod 644 "$CERTS/${host}key.pem"
+    done
 
     # StoRM nodes
     for host in storm1 storm2; do

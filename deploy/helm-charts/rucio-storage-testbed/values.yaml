@@ -209,7 +209,7 @@ fts:
   enabled: true
   fullnameOverride: fts
   oidc:
-    enabled: true
+    enabled: false
   ftsdb:
     enabled: true
     hostname: ftsdb
@@ -240,18 +240,26 @@ keycloak:
 xrd1:
   enabled: true
   fullnameOverride: xrd1
+  certFile: xrd1cert.pem
+  keyFile: xrd1key.pem
 
 xrd2:
   enabled: true
   fullnameOverride: xrd2
+  certFile: xrd2cert.pem
+  keyFile: xrd2key.pem
 
 xrd3:
   enabled: true
   fullnameOverride: xrd3
+  certFile: xrd3cert.pem
+  keyFile: xrd3key.pem
 
 xrd4:
   enabled: true
   fullnameOverride: xrd4
+  certFile: xrd4cert.pem
+  keyFile: xrd4key.pem
 
 # ===========================================================================
 # WebDAV endpoints

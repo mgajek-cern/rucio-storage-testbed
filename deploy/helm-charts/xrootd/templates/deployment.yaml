@@ -44,11 +44,11 @@ spec:
           volumeMounts:
             - name: certs
               mountPath: /tmp/xrdcert.pem
-              subPath: xrdcert.pem
+              subPath: {{ .Values.certFile }}
               readOnly: true
             - name: certs
               mountPath: /tmp/xrdkey.pem
-              subPath: xrdkey.pem
+              subPath: {{ .Values.keyFile }}
               readOnly: true
             - name: certs
               mountPath: /etc/grid-security/certificates/5fca1cb1.0

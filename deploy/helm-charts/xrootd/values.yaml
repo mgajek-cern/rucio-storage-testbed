@@ -19,9 +19,8 @@ service:
 # XRDPORT env var
 xrdPort: 1094
 
-# Whether this instance should pre-create an fts-test file
-# (matches the xrd1 entrypoint override in docker-compose)
-seedTestFile: false
+certFile: xrd1cert.pem
+keyFile: xrd1key.pem
 
 # Name of the Secret holding TLS certs (created by the umbrella chart).
 # Keys used: xrdcert.pem, xrdkey.pem, rucio_ca.pem

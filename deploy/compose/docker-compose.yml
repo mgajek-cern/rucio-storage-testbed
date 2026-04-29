@@ -7,6 +7,7 @@ services:
     environment:
       - REQUESTS_CA_BUNDLE=/etc/pki/tls/certs/ca-bundle.crt
       - SSL_CERT_FILE=/etc/pki/tls/certs/ca-bundle.crt
+      - XrdSecGSISRVNAMES="*"
     ports:
       - "8446:8446"
       - "8449:8449"
@@ -51,8 +52,8 @@ services:
     networks:
       - rucio-storage-testbed
     volumes:
-      - ${TESTBED_HOST_SOURCE}/certs/xrdcert.pem:/tmp/xrdcert.pem:ro
-      - ${TESTBED_HOST_SOURCE}/certs/xrdkey.pem:/tmp/xrdkey.pem:ro
+      - ${TESTBED_HOST_SOURCE}/certs/xrd1cert.pem:/tmp/xrdcert.pem:ro
+      - ${TESTBED_HOST_SOURCE}/certs/xrd1key.pem:/tmp/xrdkey.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/grid-mapfile:/etc/grid-security/grid-mapfile:ro
     entrypoint: >
@@ -73,8 +74,8 @@ services:
     networks:
       - rucio-storage-testbed
     volumes:
-      - ${TESTBED_HOST_SOURCE}/certs/xrdcert.pem:/tmp/xrdcert.pem:ro
-      - ${TESTBED_HOST_SOURCE}/certs/xrdkey.pem:/tmp/xrdkey.pem:ro
+      - ${TESTBED_HOST_SOURCE}/certs/xrd2cert.pem:/tmp/xrdcert.pem:ro
+      - ${TESTBED_HOST_SOURCE}/certs/xrd2key.pem:/tmp/xrdkey.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/grid-mapfile:/etc/grid-security/grid-mapfile:ro
 
@@ -90,8 +91,8 @@ services:
     networks:
       - rucio-storage-testbed
     volumes:
-      - ${TESTBED_HOST_SOURCE}/certs/xrdcert.pem:/tmp/xrdcert.pem:ro
-      - ${TESTBED_HOST_SOURCE}/certs/xrdkey.pem:/tmp/xrdkey.pem:ro
+      - ${TESTBED_HOST_SOURCE}/certs/xrd3cert.pem:/tmp/xrdcert.pem:ro
+      - ${TESTBED_HOST_SOURCE}/certs/xrd3key.pem:/tmp/xrdkey.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/xrdrucio.cfg:/etc/xrootd/xrdrucio.cfg.tmpl:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/authdb:/etc/xrootd/authdb:ro
@@ -111,8 +112,8 @@ services:
     networks:
       - rucio-storage-testbed
     volumes:
-      - ${TESTBED_HOST_SOURCE}/certs/xrdcert.pem:/tmp/xrdcert.pem:ro
-      - ${TESTBED_HOST_SOURCE}/certs/xrdkey.pem:/tmp/xrdkey.pem:ro
+      - ${TESTBED_HOST_SOURCE}/certs/xrd4cert.pem:/tmp/xrdcert.pem:ro
+      - ${TESTBED_HOST_SOURCE}/certs/xrd4key.pem:/tmp/xrdkey.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/xrdrucio.cfg:/etc/xrootd/xrdrucio.cfg.tmpl:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/authdb:/etc/xrootd/authdb:ro

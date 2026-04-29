@@ -16,6 +16,9 @@ service:
 
 xrdPort: 1094
 
+certFile: xrd3cert.pem
+keyFile: xrd3key.pem
+
 # Secret and ConfigMap created by the umbrella chart
 certsSecret: testbed-certs
 # Holds xrdrucio.cfg, authdb, scitokens.conf
