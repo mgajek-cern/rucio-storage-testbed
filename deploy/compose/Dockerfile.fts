@@ -62,7 +62,7 @@ RUN dnf install -y epel-release && \
     xrootd-client libssh2 libuuid cryptopp jsoncpp \
     protobuf zeromq libxml2 gsoap \
     libdirq activemq-cpp globus-gsi-credential \
-    soci-mysql gridsite voms \
+    soci-mysql gridsite voms voms-clients \
     python3-mysqlclient mysql cronie \
     httpd mod_ssl python3-mod_wsgi \
     boost-thread boost-filesystem boost-system \
