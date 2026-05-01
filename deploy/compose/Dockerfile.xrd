@@ -1,0 +1,11 @@
+FROM rucio/test-xrootd@sha256:27d212ec136d6d2ed7029fc445384053acb551805060cae554597a32e6361df4
+
+# Install missing runtime dependencies
+RUN set -eux; \
+    dnf install -y \
+        xrootd-voms \
+        ca-certificates \
+        openssl \
+        openssl-perl \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf

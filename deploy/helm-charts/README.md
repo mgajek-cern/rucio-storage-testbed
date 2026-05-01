@@ -25,7 +25,7 @@ helm-charts/
 │
 ├── fts/                          # Custom image (Dockerfile.fts) — GSI + OIDC FTS server
 ├── xrootd/                       # rucio/test-xrootd (GSI)
-├── xrootd-scitokens/             # Custom image (Dockerfile.xrd-scitokens) — XRootD with scitokens
+├── xrootd-scitokens/             # Custom image (Dockerfile.xrd) — XRootD with scitokens
 ├── storm-webdav/                 # ghcr.io/italiangrid/storm-webdav
 ├── webdav/                       # rucio/test-webdav (Apache + WebDAV)
 ├── minio/                        # minio/minio + mc init Job

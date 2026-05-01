@@ -5,7 +5,7 @@ This repository provides custom `Dockerfile`s to build multi-architecture (`linu
 ## Images in this repository
 
 1. **FTS3 Server (`Dockerfile.fts`):** Replaces `rucio/test-fts`. Includes patches for OIDC provider trailing-slash issues.
-2. **XRootD SciTokens (`Dockerfile.xrd-scitokens`):** Adds the SciTokens plugin to the base XRootD image to enable bearer-token TPC on `root://` protocols.
+2. **XRootD SciTokens (`Dockerfile.xrd`):** Adds the SciTokens plugin to the base XRootD image to enable bearer-token TPC on `root://` protocols.
 
 ## CI build (GitHub Actions)
 
@@ -25,7 +25,7 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 
 # Example for XRootD SciTokens
 docker buildx build --platform linux/amd64,linux/arm64 \
-    -t test-xrd-scitokens:local -f deploy/compose/Dockerfile.xrd-scitokens .
+    -t test-xrd:local -f deploy/compose/Dockerfile.xrd .
 
 # Example for Rucio Clients with DinD
 docker buildx build --platform linux/amd64,linux/arm64 \
@@ -41,4 +41,4 @@ Warning  Failed  kubelet  Failed to pull image "rucio/test-fts":
          no matching manifest for linux/arm64/v8 in the manifest list entries
 ```
 
-**Fix:** use the image built by this repository (`mgajekcern/test-fts`, `test-xrd-scitokens`) instead.
+**Fix:** use the image built by this repository (`mgajekcern/test-fts`, `test-xrd`) instead.

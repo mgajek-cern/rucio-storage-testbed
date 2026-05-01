@@ -45,9 +45,13 @@ spec:
               mountPath: /etc/grid-security/certificates/5fca1cb1.0
               subPath: rucio_ca.pem
               readOnly: true
+            - name: certs
+              mountPath: /etc/pki/ca-trust/source/anchors/rucio-dev-ca.crt
+              subPath: rucio_ca.pem
+              readOnly: true
             - name: configs
-              mountPath: /etc/xrootd/xrdrucio.cfg.tmpl
-              subPath: xrdrucio.cfg
+              mountPath: /etc/xrootd/xrdrucio.cfg
+              subPath: xrdrucio-scitokens.cfg
               readOnly: true
             - name: configs
               mountPath: /etc/xrootd/authdb
@@ -59,7 +63,7 @@ spec:
               readOnly: true
             - name: scripts
               mountPath: /usr/local/bin/docker-entrypoint.sh
-              subPath: docker-entrypoint-oidc.sh
+              subPath: docker-entrypoint.sh
               readOnly: true
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

@@ -1,10 +1,10 @@
 # Default values for xrootd-scitokens.
-# This image comes from the custom Dockerfile.xrd-scitokens in the testbed repo.
+# This image comes from the custom Dockerfile.xrd in the testbed repo.
 # Deploys one SciTokens-enabled XRootD instance; umbrella installs xrd3 and xrd4.
 
 image:
-  # Build this from deploy/compose/Dockerfile.xrd-scitokens and push to your registry
-  repository: mgajekcern/test-xrd-scitokens
+  # Build this from deploy/compose/Dockerfile.xrd and push to your registry
+  repository: mgajekcern/test-xrd
   tag: latest
   pullPolicy: IfNotPresent
 
@@ -23,7 +23,7 @@ keyFile: xrd3key.pem
 certsSecret: testbed-certs
 # Holds xrdrucio.cfg, authdb, scitokens.conf
 configsConfigMap: testbed-configs
-# Holds docker-entrypoint-oidc.sh
+# Holds docker-entrypoint.sh
 scriptsConfigMap: testbed-scripts
 
 resources: {}

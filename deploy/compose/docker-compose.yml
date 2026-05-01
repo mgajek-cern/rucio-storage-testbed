@@ -43,7 +43,9 @@ services:
       - ftsdb-data:/var/lib/mysql
 
   xrd1:
-    image: rucio/test-xrootd@sha256:27d212ec136d6d2ed7029fc445384053acb551805060cae554597a32e6361df4
+    build:
+      context: ${TESTBED_HOST_SOURCE}
+      dockerfile: deploy/compose/Dockerfile.xrd
     hostname: xrd1
     environment:
       - XRDPORT=1094
@@ -55,6 +57,7 @@ services:
       - ${TESTBED_HOST_SOURCE}/certs/xrd1cert.pem:/tmp/xrdcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/xrd1key.pem:/tmp/xrdkey.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/pki/ca-trust/source/anchors/rucio-dev-ca.crt:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/grid-mapfile:/etc/grid-security/grid-mapfile:ro
     entrypoint: >
       bash -c "
@@ -65,7 +68,9 @@ services:
       "
 
   xrd2:
-    image: rucio/test-xrootd@sha256:27d212ec136d6d2ed7029fc445384053acb551805060cae554597a32e6361df4
+    build:
+      context: ${TESTBED_HOST_SOURCE}
+      dockerfile: deploy/compose/Dockerfile.xrd
     hostname: xrd2
     environment:
       - XRDPORT=1094
@@ -77,12 +82,13 @@ services:
       - ${TESTBED_HOST_SOURCE}/certs/xrd2cert.pem:/tmp/xrdcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/xrd2key.pem:/tmp/xrdkey.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/pki/ca-trust/source/anchors/rucio-dev-ca.crt:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/grid-mapfile:/etc/grid-security/grid-mapfile:ro
 
   xrd3:
     build:
       context: ${TESTBED_HOST_SOURCE}
-      dockerfile: deploy/compose/Dockerfile.xrd-scitokens
+      dockerfile: deploy/compose/Dockerfile.xrd
     hostname: xrd3
     environment:
       - XRDPORT=1094
@@ -94,16 +100,17 @@ services:
       - ${TESTBED_HOST_SOURCE}/certs/xrd3cert.pem:/tmp/xrdcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/xrd3key.pem:/tmp/xrdkey.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
-      - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/xrdrucio.cfg:/etc/xrootd/xrdrucio.cfg.tmpl:ro
+      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/pki/ca-trust/source/anchors/rucio-dev-ca.crt:ro
+      - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/xrdrucio-scitokens.cfg:/etc/xrootd/xrdrucio.cfg:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/authdb:/etc/xrootd/authdb:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/scitokens.conf:/etc/xrootd/scitokens.conf:ro
-      - ${TESTBED_HOST_SOURCE}/shared/scripts/xrootd/docker-entrypoint-oidc.sh:/usr/local/bin/docker-entrypoint.sh:ro
+      - ${TESTBED_HOST_SOURCE}/shared/scripts/xrootd/docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh:ro
     entrypoint: ["/bin/bash", "/usr/local/bin/docker-entrypoint.sh"]
 
   xrd4:
     build:
       context: ${TESTBED_HOST_SOURCE}
-      dockerfile: deploy/compose/Dockerfile.xrd-scitokens
+      dockerfile: deploy/compose/Dockerfile.xrd
     hostname: xrd4
     environment:
       - XRDPORT=1094
@@ -115,10 +122,11 @@ services:
       - ${TESTBED_HOST_SOURCE}/certs/xrd4cert.pem:/tmp/xrdcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/xrd4key.pem:/tmp/xrdkey.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
-      - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/xrdrucio.cfg:/etc/xrootd/xrdrucio.cfg.tmpl:ro
+      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/pki/ca-trust/source/anchors/rucio-dev-ca.crt:r
+      - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/xrdrucio-scitokens.cfg:/etc/xrootd/xrdrucio.cfg:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/authdb:/etc/xrootd/authdb:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/scitokens.conf:/etc/xrootd/scitokens.conf:ro
-      - ${TESTBED_HOST_SOURCE}/shared/scripts/xrootd/docker-entrypoint-oidc.sh:/usr/local/bin/docker-entrypoint.sh:ro
+      - ${TESTBED_HOST_SOURCE}/shared/scripts/xrootd/docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh:ro
     entrypoint: ["/bin/bash", "/usr/local/bin/docker-entrypoint.sh"]
 
   # FTS OIDC instance — bearer token auth, no GSI proxy
@@ -322,7 +330,8 @@ services:
     volumes:
       - ${TESTBED_HOST_SOURCE}/certs/storm1cert.pem:/etc/grid-security/hostcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/storm1key.pem:/etc/grid-security/hostkey.pem:ro
-      - ${TESTBED_HOST_SOURCE}/certs/trustanchors:/etc/grid-security/certificates:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.0:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.signing_policy:/etc/grid-security/certificates/5fca1cb1.signing_policy:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/storm-webdav/storm-application-issuers.yml:/app/application-issuers.yml:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/storm-webdav/storm-application-policies.yml:/app/application-policies.yml:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/storm-webdav/data.properties:/etc/storm/webdav/sa.d/data.properties:ro
@@ -366,7 +375,8 @@ services:
     volumes:
       - ${TESTBED_HOST_SOURCE}/certs/storm2cert.pem:/etc/grid-security/hostcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/storm2key.pem:/etc/grid-security/hostkey.pem:ro
-      - ${TESTBED_HOST_SOURCE}/certs/trustanchors:/etc/grid-security/certificates:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.0:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.signing_policy:/etc/grid-security/certificates/5fca1cb1.signing_policy:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/storm-webdav/storm-application-issuers.yml:/app/application-issuers.yml:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/storm-webdav/storm-application-policies.yml:/app/application-policies.yml:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/storm-webdav/data.properties:/etc/storm/webdav/sa.d/data.properties:ro

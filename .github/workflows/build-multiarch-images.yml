@@ -9,7 +9,7 @@ jobs:
       matrix:
         include:
           - { name: fts,               file: ./deploy/compose/Dockerfile.fts,               image: test-fts }
-          - { name: xrd-scitokens,     file: ./deploy/compose/Dockerfile.xrd-scitokens,     image: test-xrd-scitokens }
+          - { name: xrd,     file: ./deploy/compose/Dockerfile.xrd,     image: test-xrd }
           - { name: rucio-client-docker-kubectl, file: ./deploy/compose/Dockerfile.rucio-client-docker-kubectl, image: rucio-client-docker-kubectl }
     steps:
       - uses: actions/checkout@v6

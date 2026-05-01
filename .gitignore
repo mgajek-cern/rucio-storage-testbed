@@ -12,3 +12,4 @@ trustanchors
 !rucio_ca.pem
 __pycache__
 .pytest_cache
+*.0

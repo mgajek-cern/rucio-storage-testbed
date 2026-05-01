@@ -61,7 +61,7 @@ seed_xrd3() {
     echo -e "\n=== Seeding file on xrd3 ==="
     SEED="scitokens-test-$(date +%s)"
     _exec_root xrd3 sh -c "
-        echo 'xrd-scitokens-tpc-test' > /data/$SEED &&
+        echo 'xrd-tpc-test' > /data/$SEED &&
         chown xrootd:xrootd /data/$SEED &&
         chmod 644 /data/$SEED
     "
@@ -135,7 +135,7 @@ verify_replica() {
 
     local content
     content=$(_exec xrd4 cat "/data/${SEED}-copy")
-    [[ "$content" == "xrd-scitokens-tpc-test" ]] \
+    [[ "$content" == "xrd-tpc-test" ]] \
         && echo "  ✓ content matches source" \
         || { echo "  ✗ content mismatch: $content"; exit 1; }
 

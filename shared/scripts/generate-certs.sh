@@ -25,7 +25,7 @@ write_ext_file() {
     echo -e "\n[ alt_names ]"
     local i=1; IFS=',' read -ra names <<< "$dns_list"
     for n in "${names[@]}"; do echo "DNS.$i = ${n// /}"; i=$((i+1)); done
-    echo "IP.1 = 127.0.0.1"
+    # echo "IP.1 = 127.0.0.1"
   } > "$out"
 }
 
@@ -78,31 +78,29 @@ generate_service_certs() {
 }
 
 setup_trust_anchors() {
-    echo "=== Preparing Trust Anchors ==="
-    mkdir -p "$CERTS/trustanchors"
-    CA_HASH=$(openssl x509 -noout -hash -in "$CERTS/rucio_ca.pem")
+    echo "=== Preparing Trust Anchors (XRootD-safe mode) ==="
+    mkdir -p "$CERTS"
 
-    # Create hash link for StoRM/FTS
-    cp "$CERTS/rucio_ca.pem" "$CERTS/trustanchors/${CA_HASH}.0"
+    HASH_NEW=$(openssl x509 -noout -hash -in "$CERTS/rucio_ca.pem")
+    HASH_OLD=$(openssl x509 -noout -subject_hash_old -in "$CERTS/rucio_ca.pem")
 
-    CA_SUBJECT=$(openssl x509 -noout -subject -nameopt compat -in "$CERTS/rucio_ca.pem" | sed 's/subject=//; s/^[[:space:]]*//; s/, /\//g')
+    for H in "$HASH_NEW" "$HASH_OLD"; do
+        cp "$CERTS/rucio_ca.pem" "$CERTS/${H}.0"
+    done
+
+    # XRootD also expects signing policy files if enabled
+    CA_SUBJECT=$(openssl x509 -noout -subject -nameopt compat -in "$CERTS/rucio_ca.pem" | sed 's/^subject=//; s/, /\//g')
     [[ "$CA_SUBJECT" != /* ]] && CA_SUBJECT="/$CA_SUBJECT"
 
-    cat > "$CERTS/trustanchors/${CA_HASH}.signing_policy" << SPEOF
+    for H in "$HASH_NEW" "$HASH_OLD"; do
+        cat > "$CERTS/${H}.signing_policy" <<EOF
 access_id_CA      X509    '${CA_SUBJECT}'
 pos_rights        globus  CA:sign
-cond_subjects     globus  '"/*"'
-SPEOF
+cond_subjects     globus  '/*'
+EOF
+    done
 
-    cat > "$CERTS/trustanchors/${CA_HASH}.namespaces" << NSEOF
-TO Issuer "${CA_SUBJECT}" PERMIT Subject ".*"
-NSEOF
-
-    # Symlink check
-    if ! openssl rehash "$CERTS/trustanchors/" 2>/dev/null; then
-        docker run --rm -v "$PWD/$CERTS/trustanchors:/ta" debian:bookworm-slim \
-            bash -c "apt-get update -qq && apt-get install -y -qq openssl && openssl rehash /ta/" 2>/dev/null || true
-    fi
+    echo "✔ Trust anchors fully materialized (no symlinks)"
 }
 
 generate_java_stores() {

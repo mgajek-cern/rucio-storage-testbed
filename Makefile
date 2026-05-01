@@ -73,7 +73,7 @@ compose-logs-%: ## Tail logs from a single service, e.g. `make compose-logs-ruci
 	$(COMPOSE) logs -f --tail=100 $*
 
 .PHONY: compose-build
-compose-build: ## Build local Docker images (fts, xrd-scitokens, rucio-client-docker-kubectl)
+compose-build: ## Build local Docker images (fts, xrd, rucio-client-docker-kubectl)
 	$(COMPOSE) build
 
 .PHONY: bootstrap
@@ -169,10 +169,10 @@ clean: ## Remove generated certs and volumes; keep CA (rucio_ca.pem + key)
 	$(COMPOSE) down -v --remove-orphans 2>/dev/null || true
 	@# Preserve the CA so we don't have to re-trust it on every iteration.
 	@# We group the patterns with -o (OR) and \( \) to apply the ! -name (NOT) logic to all of them.
-	find certs -maxdepth 1 -type f \
-	    \( -name '*.pem' -o -name '*.namespaces' -o -name '*.signing_policy' -o -name '*.csr' \) \
-	    ! -name 'rucio_ca.pem' \
-	    ! -name 'rucio_ca.key.pem' \
-	    -delete 2>/dev/null || true
-	rm -rf certs/storm-cacerts certs/trustanchors
+	find certs \
+	! -name 'rucio_ca.pem' \
+	! -name 'rucio_ca.key.pem' \
+	\( -name '*.pem' -o -name '*.namespaces' -o -name '*.signing_policy' -o -name '*.csr' -o -name '*.r0' -o -name '*.0' \) \
+	-delete 2>/dev/null || true
+	rm -rf certs/storm-cacerts
 	@echo "Cleaned certs (preserved rucio_ca.pem and rucio_ca.key.pem) and volumes"
