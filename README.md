@@ -29,13 +29,13 @@ make certs
 make compose-up
 
 # 3. Bootstrap Rucio
-make bootstrap
+RUNTIME=compose make bootstrap
 
 # 4. Run transfer tests (Bash or Python)
-make test-rucio
-make test-rucio-python
+RUNTIME=compose make test-rucio
+RUNTIME=compose make test-rucio-python
 # Or run the full suite at once
-make test-all
+RUNTIME=compose make test-all
 ```
 
 ### Kubernetes
@@ -56,7 +56,7 @@ RUNTIME=k8s make bootstrap
 RUNTIME=k8s make test-rucio
 RUNTIME=k8s make test-rucio-python
 # Or run the full suite at once
-make test-all-k8s
+RUNTIME=k8s make test-all
 ```
 
 ## Make targets
@@ -90,14 +90,13 @@ Helm / Kubernetes lifecycle (helm-*, k8s-*)
 
 Tests
   test-rucio                 Rucio E2E transfer test (bash version)
-  test-rucio-python          Rucio E2E transfer test (Python, runs in rucio-client container)
+  test-rucio-python          Rucio E2E transfer test (Python, runs in rucio-client pod)
   test-xrootd-gsi            XRootD TPC test with X.509 GSI
   test-xrootd-oidc           XRootD TPC test with OIDC tokens (SciTokens)
   test-storm                 StoRM WebDAV TPC test with OIDC tokens
   test-webdav                WebDAV TPC test with X.509 GSI
   test-s3                    S3/MinIO test with signed URLs
   test-all                   Run all tests (in series)
-  test-all-k8s               Run all tests against a Kubernetes deployment (set RUNTIME=k8s to target k8s)
 
 Development
   lint                       Run pre-commit hooks on all files

@@ -152,10 +152,6 @@ test-all: ## Run all tests (in series)
 	$(MAKE) test-rucio
 	$(MAKE) test-rucio-python
 
-.PHONY: test-all-k8s
-test-all-k8s: ## Run all tests against a Kubernetes deployment (set RUNTIME=k8s to target k8s)
-	$(MAKE) test-all RUNTIME=k8s
-
 ## Development
 
 .PHONY: lint
