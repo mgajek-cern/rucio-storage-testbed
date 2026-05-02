@@ -79,14 +79,7 @@ services:
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/xrdrucio-gsi.cfg:/etc/xrootd/xrdrucio.cfg:ro
       - ${TESTBED_HOST_SOURCE}/shared/scripts/xrootd/docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/grid-mapfile:/etc/grid-security/grid-mapfile:ro
-    entrypoint:
-      - bash
-      - -c
-      - |
-        mkdir -p /rucio &&
-        echo 'fts-test' > /rucio/fts-test-file &&
-        chown xrootd:xrootd /rucio/fts-test-file &&
-        /usr/local/bin/docker-entrypoint.sh
+    entrypoint: ["/bin/bash", "/usr/local/bin/docker-entrypoint.sh"]
 
   xrd2:
     image: mgajekcern/test-xrd:latest
