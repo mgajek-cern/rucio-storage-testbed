@@ -117,11 +117,7 @@ k8s-pods: ## List pods in the testbed namespace
 ## Tests
 
 .PHONY: test-rucio
-test-rucio: ## Rucio E2E transfer test (bash version)
-	./shared/scripts/test-rucio-transfers.sh
-
-.PHONY: test-rucio-python
-test-rucio-python: ## Rucio E2E transfer test (Python, runs in rucio-client pod)
+test-rucio: ## Rucio E2E transfer test
 	$(EXEC_RUCIO) bash -c "RUNTIME=$(RUNTIME) K8S_NAMESPACE=$(K8S_NAMESPACE) pytest /scripts/test-rucio-transfers.py"
 
 .PHONY: test-xrootd-gsi
@@ -152,7 +148,6 @@ test-all: ## Run all tests (in series)
 	$(MAKE) test-storm
 	$(MAKE) test-xrootd-oidc
 	$(MAKE) test-rucio
-	$(MAKE) test-rucio-python
 
 ## Development
 

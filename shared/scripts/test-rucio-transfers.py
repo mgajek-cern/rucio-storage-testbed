@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Python equivalent of test-rucio-transfers.sh — runs the same three scenarios
+Manual registration workflow — runs the three scenarios
 (XRootD GSI, StoRM OIDC, XRootD OIDC) using the Rucio Python client.
 
 Runtime-agnostic: respects $RUNTIME (compose | k8s, default compose).
@@ -241,7 +241,13 @@ def run_daemons(rucio_svc: str):
         svc_exec(rucio_svc, daemon)
 
 
-def validate_rule(client, rule_id, label, rucio_svc, timeout=180):
+def validate_rule(
+    client: Client,
+    rule_id: str,
+    label: str,
+    rucio_svc: str,
+    timeout: int = 180,
+) -> None:
     """Poll until locks_ok >= 1 and locks_replicating == 0; advance daemons each loop."""
     log.info("=== Validating rule %s (%s) ===", rule_id, label)
     deadline = time.time() + timeout
@@ -255,22 +261,51 @@ def validate_rule(client, rule_id, label, rucio_svc, timeout=180):
         ok = rule["locks_ok_cnt"]
         repl = rule["locks_replicating_cnt"]
         stk = rule["locks_stuck_cnt"]
-        log.info("  locks OK=%d REPL=%d STUCK=%d", ok, repl, stk)
+        state = rule.get("state", "?")
+        expires = rule.get("expires_at", "never")
+
+        log.info(
+            "  rule state=%-12s  locks OK=%-3d REPL=%-3d STUCK=%-3d  expires=%s",
+            state,
+            ok,
+            repl,
+            stk,
+            expires,
+        )
 
         if stk > 0:
-            raise RuntimeError(f"Rule {rule_id} has {stk} stuck locks")
+            # Log the stuck file details before raising so CI has actionable output
+            try:
+                locks = list(client.list_replica_locks(rule_id))
+                stuck_locks = [lock for lock in locks if lock.get("state") == "S"]
+                for lock in stuck_locks:
+                    log.error(
+                        "  STUCK lock: rse=%-12s  scope=%s  name=%s",
+                        lock.get("rse_id"),
+                        lock.get("scope"),
+                        lock.get("name"),
+                    )
+            except Exception as e:
+                log.warning("  Could not list stuck locks: %s", e)
+            raise RuntimeError(
+                f"Rule {rule_id} ({label}) has {stk} stuck lock(s) — see STUCK entries above"
+            )
+
         if ok >= 1 and repl == 0:
-            log.info("  ✓ %s passed", label)
+            log.info("  ✓ %s passed (rule_id=%s)", label, rule_id)
             return
 
-        log.info("  (running daemon cycle to advance transfer)")
+        log.info("  (advancing transfer — running poller + finisher)")
         svc_exec(
             rucio_svc, ["rucio-conveyor-poller", "--run-once", "--older-than", "0"]
         )
         svc_exec(rucio_svc, ["rucio-conveyor-finisher", "--run-once"])
         time.sleep(5)
 
-    raise TimeoutError(f"Rule {rule_id} did not converge within {timeout}s")
+    raise TimeoutError(
+        f"Rule {rule_id} ({label}) did not converge within {timeout}s — "
+        f"last state: OK={ok} REPL={repl} STUCK={stk}"
+    )
 
 
 def seed_and_register(client, rse, scope, name, storage_svc, owner):

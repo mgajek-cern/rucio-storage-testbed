@@ -148,7 +148,7 @@ sequenceDiagram
 
 > Token orchestration follows the design described in [Rucio Token Workflow Evolution](https://rucio.cern.ch/documentation/files/Rucio_Tokens_v0.1.pdf). Rucio acquires separate tokens for FTS authentication and for source/destination storage access, then bundles all three into the FTS submission. FTS is responsible only for refreshing the storage-scoped tokens during the transfer lifetime.
 
-**NOTE:** In the [test-rucio-transfers.sh](./shared/scripts/test-rucio-transfers.sh) script, we trigger the rule creation using `USERPASS` authentication to avoid the manual browser redirects required by a full OIDC login. Once the rule exists, the Rucio Conveyor daemons internally handle the OIDC token orchestration, fetching the necessary bearer tokens from Keycloak to submit the transfer job to FTS automatically.
+**NOTE:** In the [test-rucio-transfers.py](./shared/scripts/test-rucio-transfers.py) script, we trigger the rule creation using `USERPASS` authentication to avoid the manual browser redirects required by a full OIDC login. Once the rule exists, the Rucio Conveyor daemons internally handle the OIDC token orchestration, fetching the necessary bearer tokens from Keycloak to submit the transfer job to FTS automatically.
 
 ### X.509 GSI Flow (Legacy/Standard)
 
@@ -178,7 +178,7 @@ sequenceDiagram
 
 | Protocol / Target | Auth Model | Execution Command |
 | :--- | :--- | :--- |
-| **Rucio E2E** | Hybrid (Userpass + GSI + OIDC) | `./shared/scripts/test-rucio-transfers.sh` |
+| **Rucio E2E** | Hybrid (Userpass + GSI + OIDC) | `./shared/scripts/test-rucio-transfers.py` |
 | **XRootD TPC** | X.509 GSI | `docker exec -it compose-fts-1 python3 /scripts/test-fts-with-xrootd.py` |
 | **S3 / MinIO** | Signed URLs | `./shared/scripts/test-fts-with-s3.sh` |
 | **WebDAV** | X.509 GSI | `./shared/scripts/test-fts-with-webdav.sh` |

@@ -48,7 +48,7 @@ Chosen option: **Keep direct StoRM WebDAV and document the Teapot migration path
 Compliance with this decision is confirmed by:
 
 * `./shared/scripts/test-fts-with-storm-webdav.sh` passes (direct FTS-OIDC → StoRM TPC)
-* `./shared/scripts/test-rucio-transfers.sh` with `run_storm_oidc_transfer_test` passes (Rucio conveyor → FTS-OIDC → StoRM TPC)
+* `./shared/scripts/test-rucio-transfers.py` with `run_storm_oidc_transfer_test` passes (Rucio conveyor → FTS-OIDC → StoRM TPC)
 * `deploy/compose/docker-compose.yml` contains only `storm1` and `storm2`, no `teapot` service
 * `t_file.src_token_id` and `t_file.dst_token_id` are populated for conveyor-submitted transfers (proves OIDC tokens are attached per file)
 * Rule state transitions to `OK` with `Locks OK/REPLICATING/STUCK: 1/0/0` for STORM1 → STORM2 replication rules
@@ -121,7 +121,7 @@ Keep `storm1` + `storm2` and add a `teapot` service alongside, registering a sep
 
 * The Keycloak realm (`config/keycloak/realm.json`) already issues WLCG-profile tokens with path-suffixed scopes — Teapot can consume these directly
 * The fine-grained authorization policies (`config/storm-webdav/storm-application-policies.yml`) can be lifted into Teapot's per-user StoRM template with minor adjustment
-* The test-script structure in `scripts/test-rucio-transfers.sh` is already parameterized by RSE and can be extended with a `run_teapot_oidc_transfer_test` function
+* The test-script structure in `scripts/test-rucio-transfers.py` is already parameterized by RSE and can be extended with a `run_teapot_oidc_transfer_test` function
 
 **References:**
 

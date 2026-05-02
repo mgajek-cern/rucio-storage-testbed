@@ -145,9 +145,6 @@ jobs:
       - name: Rucio E2E transfer test
         run: make test-rucio
 
-      - name: Rucio E2E transfer test (using Python rucio-clients)
-        run: make test-rucio-python
-
       # Diagnostics
       - name: Dump logs on failure (compose)
         if: failure() && inputs.runtime == 'compose'
