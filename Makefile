@@ -29,9 +29,11 @@ HELM         := helm
 ifeq ($(RUNTIME), k8s)
   EXEC_RUCIO := $(KUBECTL) exec deploy/rucio-client --
   EXEC_FTS   := $(KUBECTL) exec deploy/fts --
+  EXEC_FTS_OIDC   := $(KUBECTL) exec deploy/fts-oidc --
 else
   EXEC_RUCIO := docker exec compose-rucio-client-1
   EXEC_FTS   := docker exec compose-fts-1
+  EXEC_FTS_OIDC   := docker exec compose-fts-oidc-1
 endif
 
 # ── Help ──────────────────────────────────────────────────────────────────
@@ -128,7 +130,7 @@ test-xrootd-gsi: ## XRootD TPC test with X.509 GSI
 
 .PHONY: test-xrootd-oidc
 test-xrootd-oidc: ## XRootD TPC test with OIDC tokens (SciTokens)
-	./shared/scripts/test-fts-with-xrootd-scitokens.sh
+	$(EXEC_FTS_OIDC) bash -c "pip install pytest && pytest /scripts/test-fts-with-xrootd-scitokens.py"
 
 .PHONY: test-storm
 test-storm: ## StoRM WebDAV TPC test with OIDC tokens

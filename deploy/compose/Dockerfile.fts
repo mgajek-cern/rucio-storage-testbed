@@ -69,6 +69,7 @@ RUN dnf install -y epel-release && \
     boost-chrono boost-date-time boost-regex \
     boost-iostreams boost-atomic boost-timer \
     boost-program-options pugixml \
+    gfal2-util-scripts python3-gfal2 gfal2-plugin-http \
     && dnf clean all
 
 # Python runtime dependencies
