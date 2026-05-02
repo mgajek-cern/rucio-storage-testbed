@@ -78,12 +78,10 @@ wait_for_fts() {
 
 register_s3_creds() {
     echo "=== Registering S3 credentials ==="
-    local VO
-    VO=$(fts_curl "$FTS/whoami" | python3 -c "import sys,json; print(json.load(sys.stdin)['vos'][0])")
-    echo "  VO: $VO"
 
     for storage in S3:minio1 S3:minio2; do
-        fts_curl -X DELETE "$FTS/config/cloud_storage/$storage" -o /dev/null 2>&1 || true
+        fts_curl -X DELETE "$FTS/config/cloud_storage/$storage" \
+            -o /dev/null 2>&1 || true
 
         local reg_code
         reg_code=$(fts_curl -o /dev/null -w '%{http_code}' \
@@ -92,14 +90,11 @@ register_s3_creds() {
             -d "{\"storage_name\":\"$storage\"}") || true
         echo "  register $storage: HTTP $reg_code"
 
-        cat > /tmp/s3creds.json << ENDJSON
-{"vo_name":"$VO","access_token":"minioadmin","access_token_secret":"minioadmin"}
-ENDJSON
         http_check "grant VO access to $storage" \
             "$(fts_curl -o /dev/null -w '%{http_code}' \
                 -X POST "$FTS/config/cloud_storage/$storage" \
                 -H 'Content-Type: application/json' \
-                -d @/tmp/s3creds.json)"
+                -d '{"vo_name":"*","access_token":"minioadmin","access_token_secret":"minioadmin"}')"
     done
 }
 

@@ -39,16 +39,12 @@ jobs:
       - name: Generate certificates
         run: make certs
 
-      # ─────────────────────────────────────────────────────────────────
       # Compose path
-      # ─────────────────────────────────────────────────────────────────
       - name: Start stack (compose)
         if: inputs.runtime == 'compose'
         run: docker compose -f ${{ inputs.compose_file }} up -d
 
-      # ─────────────────────────────────────────────────────────────────
       # k8s path (kind cluster)
-      # ─────────────────────────────────────────────────────────────────
       - name: Set up kind cluster
         if: inputs.runtime == 'k8s'
         uses: helm/kind-action@v1
@@ -65,9 +61,7 @@ jobs:
           kubectl create namespace rucio-testbed
           make helm-install
 
-      # ─────────────────────────────────────────────────────────────────
       # Common: bootstrap
-      # ─────────────────────────────────────────────────────────────────
       - name: Bootstrap Rucio (seeds RSEs + token provider + restarts storm/fts-oidc)
         run: make bootstrap
 
@@ -129,16 +123,13 @@ jobs:
           [ "$METHOD" = "oauth2" ] || { echo "Expected method=oauth2, got: $METHOD"; exit 1; }
           echo "fts-oidc OIDC auth OK (method=$METHOD)"
 
-      # ─────────────────────────────────────────────────────────────────
       # Tests — split between "always run" and "compose-only"
       # See KNOWN_ISSUES.md for the rationale on the k8s skips.
-      # ─────────────────────────────────────────────────────────────────
 
       - name: XRootD TPC test (GSI)
         run: make test-xrootd-gsi
 
       - name: S3 / MinIO test
-        if: inputs.runtime == 'compose'
         run: make test-s3
 
       - name: WebDAV test
@@ -157,9 +148,7 @@ jobs:
       - name: Rucio E2E transfer test (using Python rucio-clients)
         run: make test-rucio-python
 
-      # ─────────────────────────────────────────────────────────────────
       # Diagnostics
-      # ─────────────────────────────────────────────────────────────────
       - name: Dump logs on failure (compose)
         if: failure() && inputs.runtime == 'compose'
         run: |
