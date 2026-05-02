@@ -23,7 +23,7 @@ certsSecret: testbed-certs
 # Contains storm-application-issuers.yml, storm-application-policies.yml,
 # data.properties, logback-access.xml
 configsConfigMap: testbed-configs
-# Contains trustanchors/ and storm-cacerts (Java keystore)
+
 trustSecret: testbed-certs
 
 authz:

@@ -9,13 +9,20 @@ image:
 fullnameOverride: rucio-client
 
 env:
-  RUCIO_CFG_CLIENT_RUCIO_HOST: http://rucio
-  RUCIO_CFG_CLIENT_AUTH_HOST: http://rucio
-  RUCIO_CFG_CLIENT_AUTH_TYPE: userpass
-  RUCIO_CFG_CLIENT_USERNAME: ddmlab
-  RUCIO_CFG_CLIENT_PASSWORD: secret
-  RUCIO_CFG_CLIENT_ACCOUNT: root
-  REQUESTS_CA_BUNDLE: /etc/grid-security/certificates/rucio_ca.pem
+  - name: RUCIO_CFG_CLIENT_RUCIO_HOST
+    value: http://rucio
+  - name: RUCIO_CFG_CLIENT_AUTH_HOST
+    value: http://rucio
+  - name: RUCIO_CFG_CLIENT_AUTH_TYPE
+    value: userpass
+  - name: RUCIO_CFG_CLIENT_USERNAME
+    value: ddmlab
+  - name: RUCIO_CFG_CLIENT_PASSWORD
+    value: secret
+  - name: RUCIO_CFG_CLIENT_ACCOUNT
+    value: root
+  - name: REQUESTS_CA_BUNDLE
+    value: /etc/grid-security/certificates/rucio_ca.pem
 
 # Shared artifacts provided by the umbrella chart.
 certsSecret: testbed-certs

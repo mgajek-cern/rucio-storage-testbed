@@ -3,10 +3,8 @@
 # twice (xrd1, xrd2) with different `fullnameOverride`s.
 
 image:
-  repository: rucio/test-xrootd
-  # Pinned digest from the compose file (rucio/test-xrootd plain GSI build)
-  tag: ""
-  digest: "sha256:27d212ec136d6d2ed7029fc445384053acb551805060cae554597a32e6361df4"
+  repository: mgajekcern/test-xrd
+  tag: latest
   pullPolicy: IfNotPresent
 
 # Service hostname — must match what the Rucio RSE entries expect
@@ -28,6 +26,9 @@ certsSecret: testbed-certs
 
 # ConfigMap holding the grid-mapfile
 configsConfigMap: testbed-configs
+
+# Holds docker-entrypoint.sh
+scriptsConfigMap: testbed-scripts
 
 resources: {}
 

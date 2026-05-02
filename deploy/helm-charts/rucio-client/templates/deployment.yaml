@@ -31,16 +31,27 @@ spec:
                 --trusted-host pypi.python.org \
                 --trusted-host files.pythonhosted.org \
                 pytest &&
+
+              # echo "Creating VOMS proxy"
+
+              # export X509_USER_CERT=/etc/grid-security/hostcert.pem
+              # export X509_USER_KEY=/etc/grid-security/hostkey.pem
+              # export X509_USER_PROXY=/tmp/x509up_u0
+
+              # voms-proxy-init \
+              #   --cert "$X509_USER_CERT" \
+              #   --key "$X509_USER_KEY" \
+              #   --out "$X509_USER_PROXY" &&
+
+              # echo "Proxy created"
+              # voms-proxy-info -all &&
               sleep infinity
           env:
+            {{- toYaml .Values.env | nindent 12 }}
             - name: K8S_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            {{- range $k, $v := .Values.env }}
-            - name: {{ $k }}
-              value: {{ $v | quote }}
-            {{- end }}
           volumeMounts:
             - name: certs
               mountPath: /etc/grid-security/hostcert.pem

@@ -40,7 +40,7 @@ DST = os.environ.get("DST", "root://xrd2//rucio/fts-test-file")
 @pytest.fixture(scope="session")
 def context():
     log.info("=== Connecting to FTS at %s ===", FTS)
-    ctx = fts3.Context(endpoint=FTS, ucert=CERT, ukey=KEY, verify=False)
+    ctx = fts3.Context(endpoint=FTS, ucert=CERT, ukey=KEY, verify=True)
     return ctx
 
 

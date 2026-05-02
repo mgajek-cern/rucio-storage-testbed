@@ -7,7 +7,9 @@ services:
     environment:
       - REQUESTS_CA_BUNDLE=/etc/pki/tls/certs/ca-bundle.crt
       - SSL_CERT_FILE=/etc/pki/tls/certs/ca-bundle.crt
-      - XrdSecGSISRVNAMES="*"
+      - XrdSecGSISRVNAMES=*
+      - X509_USER_PROXY=/tmp/x509up_u0
+      - XrdSecGSIDELEGPROXY=2
     ports:
       - "8446:8446"
       - "8449:8449"
@@ -18,9 +20,26 @@ services:
     volumes:
       - ${TESTBED_HOST_SOURCE}/certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
-      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.0:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.signing_policy:/etc/grid-security/certificates/5fca1cb1.signing_policy:ro
+      - ${TESTBED_HOST_SOURCE}/certs/b96dc756.0:/etc/grid-security/certificates/b96dc756.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/b96dc756.signing_policy:/etc/grid-security/certificates/b96dc756.signing_policy:ro
+      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/pki/ca-trust/source/anchors/rucio-ca.crt:ro
       - ${TESTBED_HOST_SOURCE}/shared/scripts:/scripts:ro
-      - ${TESTBED_HOST_SOURCE}/shared/config/fts/gfal2_http_plugin.conf:/etc/gfal2.d/http_plugin.conf:ro
+      - ${TESTBED_HOST_SOURCE}/shared/config/fts/gfal2_xrootd_plugin.conf:/etc/gfal2.d/xrootd_plugin.conf:ro
+      - ${TESTBED_HOST_SOURCE}/shared/scripts/fts/docker-entrypoint-gsi.sh:/docker-entrypoint.sh:ro
+    entrypoint:
+      - bash
+      - -c
+      - |
+        voms-proxy-init \
+          --cert /etc/grid-security/hostcert.pem \
+          --key  /etc/grid-security/hostkey.pem \
+          --out  /tmp/x509up_u0 \
+          --valid 12:00
+        chmod 600 /tmp/x509up_u0
+        cat /etc/grid-security/certificates/5fca1cb1.0 >> /etc/pki/tls/certs/ca-bundle.crt
+        exec /docker-entrypoint.sh
     healthcheck:
       test: ["CMD", "curl", "-sk", "https://localhost:8446/whoami"]
       interval: 5s
@@ -56,16 +75,22 @@ services:
     volumes:
       - ${TESTBED_HOST_SOURCE}/certs/xrd1cert.pem:/tmp/xrdcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/xrd1key.pem:/tmp/xrdkey.pem:ro
-      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
-      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/pki/ca-trust/source/anchors/rucio-dev-ca.crt:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.0:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.signing_policy:/etc/grid-security/certificates/5fca1cb1.signing_policy:ro
+      - ${TESTBED_HOST_SOURCE}/certs/b96dc756.0:/etc/grid-security/certificates/b96dc756.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/b96dc756.signing_policy:/etc/grid-security/certificates/b96dc756.signing_policy:ro
+      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/pki/ca-trust/source/anchors/rucio-ca.crt:ro
+      - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/xrdrucio-gsi.cfg:/etc/xrootd/xrdrucio.cfg:ro
+      - ${TESTBED_HOST_SOURCE}/shared/scripts/xrootd/docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/grid-mapfile:/etc/grid-security/grid-mapfile:ro
-    entrypoint: >
-      bash -c "
+    entrypoint:
+      - bash
+      - -c
+      - |
         mkdir -p /rucio &&
         echo 'fts-test' > /rucio/fts-test-file &&
         chown xrootd:xrootd /rucio/fts-test-file &&
-        /docker-entrypoint.sh
-      "
+        /usr/local/bin/docker-entrypoint.sh
 
   xrd2:
     build:
@@ -81,9 +106,15 @@ services:
     volumes:
       - ${TESTBED_HOST_SOURCE}/certs/xrd2cert.pem:/tmp/xrdcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/xrd2key.pem:/tmp/xrdkey.pem:ro
-      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
-      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/pki/ca-trust/source/anchors/rucio-dev-ca.crt:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.0:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.signing_policy:/etc/grid-security/certificates/5fca1cb1.signing_policy:ro
+      - ${TESTBED_HOST_SOURCE}/certs/b96dc756.0:/etc/grid-security/certificates/b96dc756.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/b96dc756.signing_policy:/etc/grid-security/certificates/b96dc756.signing_policy:ro
+      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/pki/ca-trust/source/anchors/rucio-ca.crt:ro
+      - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/xrdrucio-gsi.cfg:/etc/xrootd/xrdrucio.cfg:ro
+      - ${TESTBED_HOST_SOURCE}/shared/scripts/xrootd/docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/grid-mapfile:/etc/grid-security/grid-mapfile:ro
+    entrypoint: ["/bin/bash", "/usr/local/bin/docker-entrypoint.sh"]
 
   xrd3:
     build:
@@ -99,8 +130,8 @@ services:
     volumes:
       - ${TESTBED_HOST_SOURCE}/certs/xrd3cert.pem:/tmp/xrdcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/xrd3key.pem:/tmp/xrdkey.pem:ro
-      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
-      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/pki/ca-trust/source/anchors/rucio-dev-ca.crt:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.0:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/pki/ca-trust/source/anchors/rucio-ca.crt:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/xrdrucio-scitokens.cfg:/etc/xrootd/xrdrucio.cfg:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/authdb:/etc/xrootd/authdb:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/scitokens.conf:/etc/xrootd/scitokens.conf:ro
@@ -121,8 +152,8 @@ services:
     volumes:
       - ${TESTBED_HOST_SOURCE}/certs/xrd4cert.pem:/tmp/xrdcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/xrd4key.pem:/tmp/xrdkey.pem:ro
-      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
-      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/pki/ca-trust/source/anchors/rucio-dev-ca.crt:r
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.0:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/pki/ca-trust/source/anchors/rucio-ca.crt:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/xrdrucio-scitokens.cfg:/etc/xrootd/xrdrucio.cfg:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/authdb:/etc/xrootd/authdb:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/xrootd/scitokens.conf:/etc/xrootd/scitokens.conf:ro
@@ -168,7 +199,8 @@ services:
     volumes:
       - ${TESTBED_HOST_SOURCE}/certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
-      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.0:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/pki/ca-trust/source/anchors/rucio-ca.crt:ro
       - ${TESTBED_HOST_SOURCE}/shared/scripts:/scripts:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/fts/fts3config-oidc:/etc/fts3/fts3config:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/fts/fts3restconfig-oidc:/etc/fts3/fts3restconfig:ro
@@ -176,6 +208,12 @@ services:
       - ${TESTBED_HOST_SOURCE}/shared/scripts/fts/docker-entrypoint-oidc.sh:/docker-entrypoint.sh:ro
       - ${TESTBED_HOST_SOURCE}/shared/patches/fts/middleware.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/config/middleware.py:ro
       - ${TESTBED_HOST_SOURCE}/shared/patches/fts/openidconnect.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/lib/openidconnect.py:ro
+    entrypoint: >
+      bash -c "
+        # Explicitly append to the bundle Python often uses
+        cat /etc/grid-security/certificates/5fca1cb1.0 >> /etc/pki/tls/certs/ca-bundle.crt
+        /docker-entrypoint.sh
+      "
     healthcheck:
       test: ["CMD", "curl", "-sk", "https://localhost:8446/whoami"]
       interval: 10s
@@ -265,7 +303,7 @@ services:
     volumes:
       - ${TESTBED_HOST_SOURCE}/certs/webdav1cert.pem:/etc/grid-security/hostcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/webdav1key.pem:/etc/grid-security/hostkey.pem:ro
-      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.0:/etc/grid-security/certificates/5fca1cb1.0:ro
     entrypoint: >
       bash -c "
         . /etc/apache2/envvars &&
@@ -288,7 +326,7 @@ services:
     volumes:
       - ${TESTBED_HOST_SOURCE}/certs/webdav2cert.pem:/etc/grid-security/hostcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/webdav2key.pem:/etc/grid-security/hostkey.pem:ro
-      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.0:/etc/grid-security/certificates/5fca1cb1.0:ro
     entrypoint: >
       bash -c "
         . /etc/apache2/envvars &&
@@ -479,7 +517,7 @@ services:
     volumes:
       - ${TESTBED_HOST_SOURCE}/certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
-      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.0:/etc/grid-security/certificates/5fca1cb1.0:ro
       - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/rucio_ca.pem:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/rucio/server.cfg:/opt/rucio/etc/rucio.cfg:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/rucio/alembic.ini:/opt/rucio/etc/alembic.ini:ro
@@ -520,7 +558,7 @@ services:
       - ${TESTBED_HOST_SOURCE}/shared/config/rucio/idpsecrets.json:/opt/rucio/etc/idpsecrets.json:ro
       - ${TESTBED_HOST_SOURCE}/certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
-      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.0:/etc/grid-security/certificates/5fca1cb1.0:ro
       - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/rucio_ca.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/hostcert_with_key.pem:/etc/grid-security/hostcert_with_key.pem:ro
       - ${TESTBED_HOST_SOURCE}/shared/scripts:/scripts:ro
@@ -554,7 +592,7 @@ services:
     volumes:
       - ${TESTBED_HOST_SOURCE}/certs/hostcert.pem:/etc/grid-security/hostcert.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/hostkey.pem:/etc/grid-security/hostkey.pem:ro
-      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.0:/etc/grid-security/certificates/5fca1cb1.0:ro
       - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/etc/grid-security/certificates/rucio_ca.pem:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/rucio/userpass-client.cfg:/opt/rucio/etc/userpass-client.cfg:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/rucio/userpass-client-for-rucio-oidc.cfg:/opt/rucio/etc/userpass-client-for-rucio-oidc.cfg:ro

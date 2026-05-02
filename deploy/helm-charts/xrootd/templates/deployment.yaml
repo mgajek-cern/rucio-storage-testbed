@@ -19,11 +19,14 @@ spec:
         instance: {{ include "xrootd.fullname" . }}
         release: {{ .Release.Name }}
     spec:
+      securityContext:
+        fsGroup: 1000
       hostname: {{ include "xrootd.fullname" . }}
       containers:
         - name: xrootd
-          image: {{ include "xrootd.image" . | quote }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/bash", "/usr/local/bin/docker-entrypoint.sh"]
           env:
             - name: XRDPORT
               value: {{ .Values.xrdPort | quote }}
@@ -45,28 +48,76 @@ spec:
             - name: certs
               mountPath: /tmp/xrdcert.pem
               subPath: {{ .Values.certFile }}
-              readOnly: true
             - name: certs
               mountPath: /tmp/xrdkey.pem
               subPath: {{ .Values.keyFile }}
-              readOnly: true
+            - name: certs
+              mountPath: /etc/pki/ca-trust/source/anchors/rucio_ca.pem
+              subPath: rucio_ca.pem
             - name: certs
               mountPath: /etc/grid-security/certificates/5fca1cb1.0
-              subPath: rucio_ca.pem
-              readOnly: true
+              subPath: 5fca1cb1.0
+            - name: certs
+              mountPath: /etc/grid-security/certificates/5fca1cb1.signing_policy
+              subPath: 5fca1cb1.signing_policy
+            - name: certs
+              mountPath: /etc/grid-security/certificates/b96dc756.0
+              subPath: b96dc756.0
+            - name: certs
+              mountPath: /etc/grid-security/certificates/b96dc756.signing_policy
+              subPath: b96dc756.signing_policy
             - name: configs
               mountPath: /etc/grid-security/grid-mapfile
               subPath: grid-mapfile
+            - name: scripts
+              mountPath: /usr/local/bin/docker-entrypoint.sh
+              subPath: docker-entrypoint.sh
               readOnly: true
+            - name: configs
+              mountPath: /etc/xrootd/xrdrucio.cfg
+              subPath: xrdrucio-gsi.cfg
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:
         - name: certs
           secret:
             secretName: {{ .Values.certsSecret }}
+            defaultMode: 0600
+            items:
+              - key: {{ .Values.certFile }}
+                path: {{ .Values.certFile }}
+                mode: 0600
+              - key: {{ .Values.keyFile }}
+                path: {{ .Values.keyFile }}
+                mode: 0600
+              - key: hostcert.pem
+                path: hostcert.pem
+                mode: 0600
+              - key: hostkey.pem
+                path: hostkey.pem
+                mode: 0600
+              - key: rucio_ca.pem
+                path: rucio_ca.pem
+                mode: 0644
+              - key: 5fca1cb1.0
+                path: 5fca1cb1.0
+                mode: 0644
+              - key: 5fca1cb1.signing_policy
+                path: 5fca1cb1.signing_policy
+                mode: 0644
+              - key: b96dc756.0
+                path: b96dc756.0
+                mode: 0644
+              - key: b96dc756.signing_policy
+                path: b96dc756.signing_policy
+                mode: 0644
         - name: configs
           configMap:
             name: {{ .Values.configsConfigMap }}
+        - name: scripts
+          configMap:
+            name: {{ .Values.scriptsConfigMap }}-xrootd
+            defaultMode: 0755
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

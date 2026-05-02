@@ -2,11 +2,15 @@
 set -euo pipefail
 
 echo "waiting for database..."
-/usr/local/bin/wait-for-it.sh -h ftsdb-oidc -p 3306 -t 3600
+/usr/local/bin/wait-for-it.sh -h ftsdb -p 3306 -t 3600
 
 # initialise / upgrade the database — ignore ALL errors (duplicate keys etc.)
 echo "upgrading database..."
 /usr/share/fts/fts-database-upgrade.py -y 2>&1 || echo "DB upgrade finished (errors ignored)"
+
+# Check for specific CA hash if needed for debugging
+ls -al /etc/grid-security/certificates/ | grep 5fca1cb1 || true
+ls -al /etc/grid-security/certificates/ | grep b96dc756 || true
 
 update-ca-trust 2>/dev/null || true
 

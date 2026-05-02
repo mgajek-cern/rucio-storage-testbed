@@ -2,7 +2,7 @@
 {{- /*
   Scripts are split into multiple ConfigMaps because (a) ConfigMap keys can't
   contain "/", and (b) some filenames collide across directories
-  (e.g. fts/docker-entrypoint-oidc.sh vs xrootd/docker-entrypoint-oidc.sh).
+  (e.g. fts/docker-entrypoint-gsi.sh vs xrootd/docker-entrypoint.sh).
 
   Each per-directory ConfigMap is named "<base-configMapName>-<dir>" and its
   keys are just the filenames within that directory. The top-level files
@@ -12,7 +12,7 @@
   Consumers:
     testbed-scripts        → rucio-server, rucio-client (mounted at /scripts)
     testbed-scripts-fts    → fts-oidc entrypoint + related helpers
-    testbed-scripts-xrootd → xrd-scitokens entrypoint
+    testbed-scripts-xrootd → xrd entrypoint
     testbed-scripts-rucio  → rucio bootstrap-db.py
 */}}
 ---

@@ -21,7 +21,7 @@ service:
     monitoring: 8449
 
 # Enable OIDC mode: mounts fts3config-oidc + the middleware/openidconnect patches
-# and uses docker-entrypoint-oidc.sh
+# and uses docker-entrypoint.sh
 oidc:
   enabled: false
 
@@ -39,9 +39,9 @@ ftsdb:
 
 # Shared artifact sources (managed by umbrella chart)
 certsSecret: testbed-certs
-# Holds fts3config-oidc, fts3restconfig-oidc, gfal2_http_plugin.conf
+# Holds fts3config-oidc, fts3restconfig-oidc, gfal2_xrootd_plugin.conf
 configsConfigMap: testbed-configs
-# Holds docker-entrypoint-oidc.sh and general scripts
+# Holds docker-entrypoint.sh and general scripts
 scriptsConfigMap: testbed-scripts
 # Holds fts/middleware.py and fts/openidconnect.py (only needed for oidc mode).
 # Exposed as a Secret (not a ConfigMap) so the same artifact can be reused by
@@ -53,6 +53,12 @@ env:
     value: /etc/pki/tls/certs/ca-bundle.crt
   - name: SSL_CERT_FILE
     value: /etc/pki/tls/certs/ca-bundle.crt
+  - name: X509_USER_PROXY
+    value: /tmp/x509up_u0
+  - name: XrdSecGSISRVNAMES
+    value: "*"
+  - name: XrdSecGSIDELEGPROXY
+    value: "2"
 
 resources: {}
 

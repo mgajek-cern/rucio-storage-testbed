@@ -112,8 +112,6 @@ spec:
         - name: trust
           secret:
             secretName: {{ .Values.trustSecret }}
-            # The trust anchor files live under a trustanchors/ prefix in the
-            # umbrella-managed Secret; the secret itself exposes them flat.
             items:
               - key: rucio_ca.pem
                 path: 5fca1cb1.0

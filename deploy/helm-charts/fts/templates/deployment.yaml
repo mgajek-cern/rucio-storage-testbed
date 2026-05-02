@@ -25,7 +25,24 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           {{- if .Values.oidc.enabled }}
-          command: ["/bin/bash", "/docker-entrypoint.sh"]
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              cat /etc/grid-security/certificates/5fca1cb1.0 >> /etc/pki/tls/certs/ca-bundle.crt
+              exec /docker-entrypoint.sh
+          {{- else }}
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              voms-proxy-init \
+                --cert /etc/grid-security/hostcert.pem \
+                --key  /etc/grid-security/hostkey.pem \
+                --out  /tmp/x509up_u0 \
+                --valid 12:00
+              chmod 600 /tmp/x509up_u0
+              cat /etc/grid-security/certificates/5fca1cb1.0 >> /etc/pki/tls/certs/ca-bundle.crt
+
+              exec /docker-entrypoint.sh
           {{- end }}
           env:
             {{- toYaml .Values.env | nindent 12 }}
@@ -43,48 +60,58 @@ spec:
             - name: certs
               mountPath: /etc/grid-security/hostcert.pem
               subPath: hostcert.pem
-              readOnly: true
             - name: certs
               mountPath: /etc/grid-security/hostkey.pem
               subPath: hostkey.pem
-              readOnly: true
             - name: certs
               mountPath: /etc/grid-security/certificates/5fca1cb1.0
+              subPath: 5fca1cb1.0
+            - name: certs
+              mountPath: /etc/grid-security/certificates/5fca1cb1.signing_policy
+              subPath: 5fca1cb1.signing_policy
+            - name: certs
+              mountPath: /etc/grid-security/certificates/b96dc756.0
+              subPath: b96dc756.0
+            - name: certs
+              mountPath: /etc/grid-security/certificates/b96dc756.signing_policy
+              subPath: b96dc756.signing_policy
+            - name: certs
+              mountPath: /etc/pki/ca-trust/source/anchors/rucio-ca.crt
               subPath: rucio_ca.pem
-              readOnly: true
+              readOnly: false
             # Shared scripts directory (mirrors the compose bind of shared/scripts → /scripts)
             - name: scripts
               mountPath: /scripts
-              readOnly: true
-            # Gfal2 HTTP plugin (always applied, present in both modes)
-            - name: configs
-              mountPath: /etc/gfal2.d/http_plugin.conf
-              subPath: gfal2_http_plugin.conf
-              readOnly: true
             {{- if .Values.oidc.enabled }}
             # OIDC-specific configs override the image defaults
             - name: configs
               mountPath: /etc/fts3/fts3config
               subPath: fts3config-oidc
-              readOnly: true
             - name: configs
               mountPath: /etc/fts3/fts3restconfig
               subPath: fts3restconfig-oidc
-              readOnly: true
-            # OIDC entrypoint replaces the default one
-            - name: scripts-fts
-              mountPath: /docker-entrypoint.sh
-              subPath: docker-entrypoint-oidc.sh
-              readOnly: true
             # Python patches for fts-rest-flask
             - name: patches
               mountPath: /tmp/fts-rest-flask/src/fts3rest/fts3rest/config/middleware.py
               subPath: fts--middleware.py
-              readOnly: true
             - name: patches
               mountPath: /tmp/fts-rest-flask/src/fts3rest/fts3rest/lib/openidconnect.py
               subPath: fts--openidconnect.py
-              readOnly: true
+            # Gfal2 HTTP plugin (always applied, present in both modes)
+            - name: configs
+              mountPath: /etc/gfal2.d/http_plugin.conf
+              subPath: gfal2_http_plugin.conf
+            - name: scripts-fts
+              mountPath: /docker-entrypoint.sh
+              subPath: docker-entrypoint-oidc.sh
+            {{- else }}
+            # Gfal2 XrootD plugin (always applied, present in both modes)
+            - name: configs
+              mountPath: /etc/gfal2.d/xrootd_plugin.conf
+              subPath: gfal2_xrootd_plugin.conf
+            - name: scripts-fts
+              mountPath: /docker-entrypoint.sh
+              subPath: docker-entrypoint-gsi.sh
             {{- end }}
           {{- if .Values.healthcheck.enabled }}
           readinessProbe:
@@ -100,16 +127,36 @@ spec:
           secret:
             secretName: {{ .Values.certsSecret }}
             defaultMode: 0600
+            items:
+              - key: hostcert.pem
+                path: hostcert.pem
+                mode: 0600
+              - key: hostkey.pem
+                path: hostkey.pem
+                mode: 0600
+              - key: rucio_ca.pem
+                path: rucio_ca.pem
+                mode: 0644
+              - key: 5fca1cb1.0
+                path: 5fca1cb1.0
+                mode: 0644
+              - key: 5fca1cb1.signing_policy
+                path: 5fca1cb1.signing_policy
+                mode: 0644
+              - key: b96dc756.0
+                path: b96dc756.0
+                mode: 0644
+              - key: b96dc756.signing_policy
+                path: b96dc756.signing_policy
+                mode: 0644
         - name: scripts
           configMap:
             name: {{ .Values.scriptsConfigMap }}
             defaultMode: 0755
-        {{- if .Values.oidc.enabled }}
         - name: scripts-fts
           configMap:
             name: {{ .Values.scriptsConfigMap }}-fts
             defaultMode: 0755
-        {{- end }}
         - name: configs
           configMap:
             name: {{ .Values.configsConfigMap }}

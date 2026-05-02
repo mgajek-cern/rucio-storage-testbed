@@ -1,21 +1,9 @@
 #!/usr/bin/env bash
 # test-rucio-transfers.sh — manual registration workflow
-#
-# Skips XRootD GSI on k8s runtime (see KNOWN_ISSUES.md for context).
-# Set SKIP_GSI=1 to skip GSI even on compose.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_lib.sh"
-
-# Default skip-list based on runtime. RUNTIME is exported by the Makefile.
-: "${RUNTIME:=compose}"
-: "${SKIP_GSI:=}"
-
-if [ "$RUNTIME" = "k8s" ] && [ -z "$SKIP_GSI" ]; then
-    SKIP_GSI=1
-    echo "[NOTICE] Skipping XRootD GSI test on k8s runtime (see KNOWN_ISSUES.md)"
-fi
 
 # ── Auth & Daemon Helpers ─────────────────────────────────────────────────────
 
@@ -195,11 +183,7 @@ test_xrootd_oidc() {
 }
 
 main() {
-    if [ -z "$SKIP_GSI" ]; then
-        test_xrootd_gsi
-    else
-        echo -e "\n[ SKIP: XRootD GSI (XRD1 -> XRD2) — RUNTIME=$RUNTIME ]"
-    fi
+    test_xrootd_gsi
     test_storm_oidc
     test_xrootd_oidc
 }

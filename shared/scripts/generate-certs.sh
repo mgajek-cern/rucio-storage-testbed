@@ -86,9 +86,9 @@ setup_trust_anchors() {
 
     for H in "$HASH_NEW" "$HASH_OLD"; do
         cp "$CERTS/rucio_ca.pem" "$CERTS/${H}.0"
+        chmod 644 "$CERTS/${H}.0"
     done
 
-    # XRootD also expects signing policy files if enabled
     CA_SUBJECT=$(openssl x509 -noout -subject -nameopt compat -in "$CERTS/rucio_ca.pem" | sed 's/^subject=//; s/, /\//g')
     [[ "$CA_SUBJECT" != /* ]] && CA_SUBJECT="/$CA_SUBJECT"
 
@@ -98,9 +98,12 @@ access_id_CA      X509    '${CA_SUBJECT}'
 pos_rights        globus  CA:sign
 cond_subjects     globus  '/*'
 EOF
+        chmod 644 "$CERTS/${H}.signing_policy"
     done
 
-    echo "✔ Trust anchors fully materialized (no symlinks)"
+    chmod 755 "$CERTS"
+
+    echo "✔ Trust anchors fully materialized (correct permissions)"
 }
 
 generate_java_stores() {

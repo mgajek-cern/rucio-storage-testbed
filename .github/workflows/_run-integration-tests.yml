@@ -135,7 +135,6 @@ jobs:
       # ─────────────────────────────────────────────────────────────────
 
       - name: XRootD TPC test (GSI)
-        if: inputs.runtime == 'compose'
         run: make test-xrootd-gsi
 
       - name: S3 / MinIO test
@@ -143,7 +142,6 @@ jobs:
         run: make test-s3
 
       - name: WebDAV test
-        if: inputs.runtime == 'compose'
         run: make test-webdav
 
       # OIDC-based tests run on both runtimes

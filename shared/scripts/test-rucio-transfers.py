@@ -11,9 +11,6 @@ Typical invocations:
 
     kubectl -n rucio-testbed exec deploy/rucio-client -- \\
         bash -c "RUNTIME=k8s pytest -v /scripts/test-rucio-transfers.py"
-
-GSI test is skipped automatically on k8s (see KNOWN_ISSUES.md). Set SKIP_GSI=1
-to skip it on compose too, or SKIP_GSI=0 to force-run on k8s.
 """
 
 import logging
@@ -36,12 +33,7 @@ log = logging.getLogger("rucio-transfers")
 
 # ── Runtime detection ──────────────────────────────────────────────────────
 RUNTIME = os.getenv("RUNTIME", "compose")
-SKIP_GSI = os.getenv("SKIP_GSI", "")
 K8S_NAMESPACE = os.getenv("K8S_NAMESPACE", "rucio-testbed")
-
-# Skip GSI when (a) on k8s and SKIP_GSI not explicitly "0", or (b) SKIP_GSI=1
-SHOULD_SKIP_GSI = (RUNTIME == "k8s" and SKIP_GSI != "0") or SKIP_GSI == "1"
-
 
 # ── Topology (logical service names — no runtime details) ──────────────────
 RUCIO = "rucio"
@@ -309,10 +301,6 @@ def transfer_workflow(
 
 
 # ── Tests ──────────────────────────────────────────────────────────────────
-@pytest.mark.skipif(
-    SHOULD_SKIP_GSI,
-    reason=f"Skipping XRootD GSI test on {RUNTIME} runtime (SKIP_GSI={SKIP_GSI})",
-)
 def test_xrootd_gsi(client_std, fts_proxy):
     scope, name = "ddmlab", f"gsi-{int(time.time())}"
     transfer_workflow(
