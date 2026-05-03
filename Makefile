@@ -115,30 +115,29 @@ k8s-pods: ## List pods in the testbed namespace
 	$(KUBECTL) get pods
 
 ## Tests
+.PHONY: test-xrootd-gsi
+test-xrootd-gsi: ## XRootD TPC test with X.509 GSI
+	$(EXEC_FTS) bash -c "pytest /scripts/test-fts-with-xrootd.py"
+
+.PHONY: test-s3
+test-s3: ## S3/MinIO test with signed URLs
+	$(EXEC_FTS) bash -c "pytest /scripts/test-fts-with-s3.py"
+
+.PHONY: test-webdav
+test-webdav: ## WebDAV TPC test with X.509 GSI
+	$(EXEC_FTS) bash -c "RUNTIME=$(RUNTIME) K8S_NAMESPACE=$(K8S_NAMESPACE) pytest /scripts/test-fts-with-webdav.py"
+
+.PHONY: test-storm
+test-storm: ## StoRM WebDAV TPC test with OIDC tokens
+	$(EXEC_FTS_OIDC) bash -c "RUNTIME=$(RUNTIME) K8S_NAMESPACE=$(K8S_NAMESPACE) pytest /scripts/test-fts-with-storm-webdav.py"
+
+.PHONY: test-xrootd-oidc
+test-xrootd-oidc: ## XRootD TPC test with OIDC tokens (SciTokens)
+	$(EXEC_FTS_OIDC) bash -c "pytest /scripts/test-fts-with-xrootd-scitokens.py"
 
 .PHONY: test-rucio
 test-rucio: ## Rucio E2E transfer test
 	$(EXEC_RUCIO) bash -c "RUNTIME=$(RUNTIME) K8S_NAMESPACE=$(K8S_NAMESPACE) pytest /scripts/test-rucio-transfers.py"
-
-.PHONY: test-xrootd-gsi
-test-xrootd-gsi: ## XRootD TPC test with X.509 GSI
-	$(EXEC_FTS) bash -c "pip install pytest && pytest /scripts/test-fts-with-xrootd.py"
-
-.PHONY: test-xrootd-oidc
-test-xrootd-oidc: ## XRootD TPC test with OIDC tokens (SciTokens)
-	$(EXEC_FTS_OIDC) bash -c "pip install pytest && pytest /scripts/test-fts-with-xrootd-scitokens.py"
-
-.PHONY: test-storm
-test-storm: ## StoRM WebDAV TPC test with OIDC tokens
-	./shared/scripts/test-fts-with-storm-webdav.sh
-
-.PHONY: test-webdav
-test-webdav: ## WebDAV TPC test with X.509 GSI
-	./shared/scripts/test-fts-with-webdav.sh
-
-.PHONY: test-s3
-test-s3: ## S3/MinIO test with signed URLs
-	./shared/scripts/test-fts-with-s3.sh
 
 .PHONY: test-all
 test-all: ## Run all tests (in series)

@@ -1,4 +1,4 @@
-name: Run Integration Tests (reusable)
+name: Run Distributed Storage Testbed
 
 on:
   workflow_call:

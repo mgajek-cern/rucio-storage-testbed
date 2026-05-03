@@ -1,7 +1,78 @@
 #!/usr/bin/env bash
 set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/_lib.sh"
+
+RUNTIME="${RUNTIME:-compose}"
+K8S_NAMESPACE="${K8S_NAMESPACE:-rucio-testbed}"
+COMPOSE_FILE="${COMPOSE_FILE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/deploy/compose/docker-compose.yml}"
+
+# ─── Cross-runtime helpers ───────────────────────────────────────
+
+# _exec <service> -- <command…>
+#
+# In compose mode: docker exec compose-<service>-1 <command…>
+# In k8s mode:     kubectl exec deploy/<service> [-c <svc>] -- <command…>
+#
+# StatefulSet pods are addressed as pod/<name>-0 with no -c flag (single
+# container, name varies by chart). Sidecar Deployments (rucio, rucio-oidc)
+# need -c to pick the app container, not the log-tailer sidecar.
+_exec() {
+    local svc=$1; shift
+    case "$RUNTIME" in
+        compose)
+            docker exec "compose-${svc}-1" "$@"
+            ;;
+        k8s)
+            local target
+            local -a cflag=()
+            case "$svc" in
+                ftsdb|ftsdb-oidc|ruciodb|ruciodb-oidc|storm1|storm2|minio1|minio2)
+                    target="pod/${svc}-0" ;;
+                rucio|rucio-oidc)
+                    target="deploy/${svc}"; cflag=(-c "$svc") ;;
+                *)
+                    target="deploy/${svc}" ;;
+            esac
+            kubectl -n "$K8S_NAMESPACE" exec "$target" "${cflag[@]}" -- "$@"
+            ;;
+        *) echo "Unknown RUNTIME: $RUNTIME" >&2; return 2 ;;
+    esac
+}
+
+# Graceful restart of one or more services.
+_restart() {
+    case "$RUNTIME" in
+        compose)
+            docker compose -f "$COMPOSE_FILE" restart "$@" ;;
+        k8s)
+            for svc in "$@"; do
+                local target
+                case "$svc" in
+                    storm1|storm2|minio1|minio2|ftsdb*|ruciodb*)
+                        target="statefulset/${svc}" ;;
+                    *)
+                        target="deploy/${svc}" ;;
+                esac
+                kubectl -n "$K8S_NAMESPACE" rollout restart "$target"
+                kubectl -n "$K8S_NAMESPACE" rollout status  "$target" --timeout=120s
+            done ;;
+    esac
+}
+
+# Probe an HTTP endpoint as seen "from the outside".
+# Compose: hits the host's localhost (relies on published ports).
+# K8s:     execs into rucio-oidc and curls localhost there.
+# Returns the HTTP status code (or "000" on connection failure).
+_http_probe_local() {
+    local port=$1 path=$2
+    case "$RUNTIME" in
+        compose)
+            curl -s -o /dev/null -w '%{http_code}' \
+                "http://localhost:${port}${path}" || true ;;
+        k8s)
+            _exec rucio-oidc curl -s -o /dev/null -w '%{http_code}' \
+                "http://localhost${path}" 2>/dev/null || true ;;
+    esac
+}
 
 # ── Service URLs (used by RSE config) ───────────────────────────────────────
 FTS="https://fts:8446"

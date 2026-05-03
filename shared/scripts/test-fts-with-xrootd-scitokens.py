@@ -9,11 +9,11 @@ Keycloak, xrd3, and xrd4, and the CA trust anchors already configured.
 Typical invocations:
     # Compose
     docker exec compose-fts-oidc-1 \\
-        bash -c "pip install pytest && pytest /scripts/test-fts-with-xrootd-scitokens.py"
+        bash -c "pytest /scripts/test-fts-with-xrootd-scitokens.py"
 
     # Kubernetes
     kubectl -n rucio-testbed exec deploy/fts-oidc -- \\
-        bash -c "pip install pytest && pytest /scripts/test-fts-with-xrootd-scitokens.py"
+        bash -c "pytest /scripts/test-fts-with-xrootd-scitokens.py"
 """
 
 import base64

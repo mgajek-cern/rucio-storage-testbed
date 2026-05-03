@@ -20,6 +20,7 @@ spec:
         release: {{ .Release.Name }}
     spec:
       hostname: {{ include "fts.fullname" . }}
+      serviceAccountName: {{ include "fts.fullname" . }}
       containers:
         - name: fts
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -28,19 +29,92 @@ spec:
           command: ["/bin/bash", "-c"]
           args:
             - |
-              cat /etc/grid-security/certificates/5fca1cb1.0 >> /etc/pki/tls/certs/ca-bundle.crt
-              exec /docker-entrypoint.sh
+              # Install kubectl
+              if ! command -v kubectl >/dev/null 2>&1; then
+                ARCH=$$(uname -m)
+                case $$ARCH in
+                  x86_64)  K8S_ARCH=amd64 ;;
+                  aarch64) K8S_ARCH=arm64 ;;
+                  *) echo "Unsupported arch: $$ARCH"; exit 1 ;;
+                esac
+
+                KUBECTL_VERSION=$$(curl -L -s https://dl.k8s.io/release/stable.txt)
+
+                curl -LO \
+                  "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/$${K8S_ARCH}/kubectl"
+
+                install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+                rm -f kubectl
+              fi
+
+              kubectl version --client || true
+
+              pip install pytest --quiet
+
+              # CA trust injection
+              if ! grep -q "5fca1cb1" /etc/pki/tls/certs/ca-bundle.crt; then
+                cat /etc/grid-security/certificates/5fca1cb1.0 >> /etc/pki/tls/certs/ca-bundle.crt
+              fi
+
+              /docker-entrypoint.sh
           {{- else }}
           command: ["/bin/bash", "-c"]
           args:
             - |
+              set -e
+
+              # Install mc
+              if ! command -v mc >/dev/null 2>&1; then
+                ARCH=$$(uname -m)
+                case $$ARCH in
+                  x86_64)  MC_ARCH=amd64 ;;
+                  aarch64) MC_ARCH=arm64 ;;
+                  *) echo "Unsupported arch: $$ARCH"; exit 1 ;;
+                esac
+
+                curl -sSL \
+                  https://dl.min.io/client/mc/release/linux-$$MC_ARCH/mc \
+                  -o /usr/local/bin/mc
+
+                chmod +x /usr/local/bin/mc
+              fi
+
+              # Install kubectl
+              if ! command -v kubectl >/dev/null 2>&1; then
+                ARCH=$$(uname -m)
+                case $$ARCH in
+                  x86_64)  K8S_ARCH=amd64 ;;
+                  aarch64) K8S_ARCH=arm64 ;;
+                  *) echo "Unsupported arch: $$ARCH"; exit 1 ;;
+                esac
+
+                KUBECTL_VERSION=$$(curl -L -s https://dl.k8s.io/release/stable.txt)
+
+                curl -LO \
+                  "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/$${K8S_ARCH}/kubectl"
+
+                install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+                rm -f kubectl
+              fi
+
+              kubectl version --client || true
+
+              # Python test deps
+              pip install --quiet pytest
+
+              # Proxy init
               voms-proxy-init \
                 --cert /etc/grid-security/hostcert.pem \
                 --key  /etc/grid-security/hostkey.pem \
                 --out  /tmp/x509up_u0 \
                 --valid 12:00
+
               chmod 600 /tmp/x509up_u0
-              cat /etc/grid-security/certificates/5fca1cb1.0 >> /etc/pki/tls/certs/ca-bundle.crt
+
+              # CA trust injection
+              if ! grep -q "5fca1cb1" /etc/pki/tls/certs/ca-bundle.crt; then
+                cat /etc/grid-security/certificates/5fca1cb1.0 >> /etc/pki/tls/certs/ca-bundle.crt
+              fi
 
               exec /docker-entrypoint.sh
           {{- end }}

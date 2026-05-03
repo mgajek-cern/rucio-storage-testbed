@@ -10,11 +10,11 @@ and does not depend on the lifecycle postStart hook having run.
 Typical invocations:
     # Compose — run from inside the FTS container
     docker exec compose-fts-1 \\
-        bash -c "pip install pytest && pytest /scripts/test-fts-with-xrootd.py"
+        bash -c "pytest /scripts/test-fts-with-xrootd.py"
 
     # Kubernetes — run from inside the FTS pod
     kubectl -n rucio-testbed exec deploy/fts -- \\
-        bash -c "pip install pytest && pytest /scripts/test-fts-with-xrootd.py"
+        bash -c "pytest /scripts/test-fts-with-xrootd.py"
 """
 
 import datetime

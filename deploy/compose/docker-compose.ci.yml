@@ -26,17 +26,57 @@ services:
       - ${TESTBED_HOST_SOURCE}/shared/scripts:/scripts:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/fts/gfal2_xrootd_plugin.conf:/etc/gfal2.d/xrootd_plugin.conf:ro
       - ${TESTBED_HOST_SOURCE}/shared/scripts/fts/docker-entrypoint-gsi.sh:/docker-entrypoint.sh:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     entrypoint:
       - bash
       - -c
       - |
+        set -e
+
+        # Install mc
+        if ! command -v mc >/dev/null 2>&1; then
+          ARCH=$$(uname -m)
+          case $$ARCH in
+            x86_64)  MC_ARCH=amd64 ;;
+            aarch64) MC_ARCH=arm64 ;;
+            *) echo "Unsupported arch: $$ARCH"; exit 1 ;;
+          esac
+
+          curl -sSL \
+            https://dl.min.io/client/mc/release/linux-$$MC_ARCH/mc \
+            -o /usr/local/bin/mc
+
+          chmod +x /usr/local/bin/mc
+        fi
+
+        # Install docker CLI
+        if ! command -v docker >/dev/null 2>&1; then
+          dnf install -y --setopt=install_weak_deps=False dnf-plugins-core \
+          && dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo \
+          && dnf install -y --setopt=install_weak_deps=False docker-ce-cli \
+          && dnf clean all \
+          && rm -rf /var/cache/dnf
+        fi
+
+        docker --version || true
+
+        # Python test deps
+        pip install --quiet pytest
+
+        # Proxy init
         voms-proxy-init \
           --cert /etc/grid-security/hostcert.pem \
           --key  /etc/grid-security/hostkey.pem \
           --out  /tmp/x509up_u0 \
           --valid 12:00
+
         chmod 600 /tmp/x509up_u0
-        cat /etc/grid-security/certificates/5fca1cb1.0 >> /etc/pki/tls/certs/ca-bundle.crt
+
+        # CA trust injection
+        if ! grep -q "5fca1cb1" /etc/pki/tls/certs/ca-bundle.crt; then
+          cat /etc/grid-security/certificates/5fca1cb1.0 >> /etc/pki/tls/certs/ca-bundle.crt
+        fi
+
         exec /docker-entrypoint.sh
     healthcheck:
       test: ["CMD", "curl", "-sk", "https://localhost:8446/whoami"]
@@ -189,12 +229,30 @@ services:
       - ${TESTBED_HOST_SOURCE}/shared/scripts/fts/docker-entrypoint-oidc.sh:/docker-entrypoint.sh:ro
       - ${TESTBED_HOST_SOURCE}/shared/patches/fts/middleware.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/config/middleware.py:ro
       - ${TESTBED_HOST_SOURCE}/shared/patches/fts/openidconnect.py:/tmp/fts-rest-flask/src/fts3rest/fts3rest/lib/openidconnect.py:ro
-    entrypoint: >
-      bash -c "
-        # Explicitly append to the bundle Python often uses
-        cat /etc/grid-security/certificates/5fca1cb1.0 >> /etc/pki/tls/certs/ca-bundle.crt
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    entrypoint:
+      - bash
+      - -c
+      - |
+        # Install docker CLI
+        if ! command -v docker >/dev/null 2>&1; then
+          dnf install -y --setopt=install_weak_deps=False dnf-plugins-core \
+          && dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo \
+          && dnf install -y --setopt=install_weak_deps=False docker-ce-cli \
+          && dnf clean all \
+          && rm -rf /var/cache/dnf
+        fi
+
+        docker --version || true
+
+        pip install pytest --quiet
+
+        # CA trust injection
+        if ! grep -q "5fca1cb1" /etc/pki/tls/certs/ca-bundle.crt; then
+          cat /etc/grid-security/certificates/5fca1cb1.0 >> /etc/pki/tls/certs/ca-bundle.crt
+        fi
+
         /docker-entrypoint.sh
-      "
     healthcheck:
       test: ["CMD", "curl", "-sk", "https://localhost:8446/whoami"]
       interval: 10s

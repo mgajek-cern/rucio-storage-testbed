@@ -31,9 +31,8 @@ make compose-up
 # 3. Bootstrap Rucio
 RUNTIME=compose make bootstrap
 
-# 4. Run transfer tests (Bash or Python)
+# 4. Run transfer tests
 RUNTIME=compose make test-rucio
-RUNTIME=compose make test-rucio-python
 # Or run the full suite at once
 RUNTIME=compose make test-all
 ```
@@ -54,7 +53,6 @@ RUNTIME=k8s make bootstrap
 
 # 4. Run transfer tests
 RUNTIME=k8s make test-rucio
-RUNTIME=k8s make test-rucio-python
 # Or run the full suite at once
 RUNTIME=k8s make test-all
 ```
@@ -90,7 +88,6 @@ Helm / Kubernetes lifecycle (helm-*, k8s-*)
 
 Tests
   test-rucio                 Rucio E2E transfer test (bash version)
-  test-rucio-python          Rucio E2E transfer test (Python, runs in rucio-client pod)
   test-xrootd-gsi            XRootD TPC test with X.509 GSI
   test-xrootd-oidc           XRootD TPC test with OIDC tokens (SciTokens)
   test-storm                 StoRM WebDAV TPC test with OIDC tokens
