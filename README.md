@@ -87,12 +87,12 @@ Helm / Kubernetes lifecycle (helm-*, k8s-*)
   k8s-pods                   List pods in the testbed namespace
 
 Tests
-  test-rucio                 Rucio E2E transfer test (bash version)
   test-xrootd-gsi            XRootD TPC test with X.509 GSI
-  test-xrootd-oidc           XRootD TPC test with OIDC tokens (SciTokens)
-  test-storm                 StoRM WebDAV TPC test with OIDC tokens
-  test-webdav                WebDAV TPC test with X.509 GSI
   test-s3                    S3/MinIO test with signed URLs
+  test-webdav                WebDAV TPC test with X.509 GSI
+  test-storm                 StoRM WebDAV TPC test with OIDC tokens
+  test-xrootd-oidc           XRootD TPC test with OIDC tokens (SciTokens)
+  test-rucio                 Rucio E2E transfer test
   test-all                   Run all tests (in series)
 
 Development
@@ -175,12 +175,12 @@ sequenceDiagram
 
 | Protocol / Target | Auth Model | Execution Command |
 | :--- | :--- | :--- |
-| **Rucio E2E** | Hybrid (Userpass + X.509 GSI + OIDC Token/SciToken) | `./shared/scripts/test-rucio-transfers.py` |
-| **XRootD TPC** | X.509 GSI | `docker exec -it compose-fts-1 python3 /scripts/test-fts-with-xrootd.py` |
-| **S3 / MinIO** | Signed URLs | `./shared/scripts/test-fts-with-s3.sh` |
-| **WebDAV** | X.509 GSI | `./shared/scripts/test-fts-with-webdav.sh` |
-| **StoRM WebDAV** | OIDC Token | `./shared/scripts/test-fts-with-storm-webdav.sh` |
-| **XRootD TPC** | SciToken | `./shared/scripts/test-fts-with-xrootd-scitokens.sh` |
+| **Rucio E2E** | Hybrid (Userpass + X.509 GSI + OIDC Token/SciToken) | `make test-rucio` |
+| **XRootD TPC** | X.509 GSI | `make test-xrootd-gsi` |
+| **S3 / MinIO** | Signed URLs | `make test-s3` |
+| **WebDAV** | X.509 GSI | `make test-webdav` |
+| **StoRM WebDAV** | OIDC Token | `make test-storm` |
+| **XRootD TPC** | SciToken | `make test-xrootd-oidc` |
 
 **NOTE:** The Rucio E2E tests validate the Manual Registration pattern (view [the user workflows document](./docs/user-workflows.md)), where files are seeded directly onto storage before being registered in the Rucio catalog.
 

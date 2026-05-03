@@ -343,3 +343,105 @@ def test_xrootd_oidc(client_oidc):
         owner="xrootd",
         label="XRootD OIDC",
     )
+
+
+def test_add_dataset(client_std, fts_proxy):
+    """Register two files into a new dataset on XRD1, replicate to XRD2.
+
+    Demonstrates add_dataset — the recommended single-call pattern for
+    atomically creating a dataset and registering its initial replicas.
+    """
+    scope = "ddmlab"
+    dataset = f"gsi-dataset-{int(time.time())}"
+    files = [
+        {"name": f"{dataset}-file1", "content": "rucio-test-file1\n"},
+        {"name": f"{dataset}-file2", "content": "rucio-test-file2\n"},
+    ]
+
+    log.info("[ Test: add_dataset — XRD1 (seed 2 files + dataset) → XRD2 ]")
+
+    registered = []
+    for f in files:
+        pfn = compute_pfn(client_std, "XRD1", scope, f["name"])
+        local = pfn_to_local_path("XRD1", pfn)
+        seed_file(XRD1, local, "xrootd")
+        size, adler32 = compute_metadata(XRD1, local)
+        registered.append(
+            {
+                "scope": scope,
+                "name": f["name"],
+                "bytes": size,
+                "adler32": adler32,
+                "pfn": pfn,
+            }
+        )
+        log.info("  seeded %s → %s", f["name"], local)
+
+    log.info("  Creating dataset %s:%s with %d files", scope, dataset, len(registered))
+    client_std.add_dataset(scope=scope, name=dataset, rse="XRD1", files=registered)
+    log.info("  ✓ Dataset registered")
+
+    # Prepare destination dirs for both files
+    for f in registered:
+        dst_path = pfn_to_local_path(
+            "XRD2", compute_pfn(client_std, "XRD2", scope, f["name"])
+        )
+        prepare_dest_dir(XRD2, dst_path, "xrootd")
+
+    # Single rule on the dataset DID — Rucio expands it to per-file rules
+    rule_id = add_rule(client_std, scope, dataset, "XRD2")
+    run_daemons(RUCIO)
+    validate_rule(client_std, rule_id, "add_dataset XRD1→XRD2", RUCIO)
+
+
+def test_add_files_to_dataset(client_std, fts_proxy):
+    """Append two new files to an existing dataset on XRD1, replicate to XRD2.
+
+    Demonstrates add_files_to_dataset — the pattern for extending an
+    existing dataset with new replicas in a single API call.
+    """
+    scope = "ddmlab"
+    dataset = f"gsi-existing-dataset-{int(time.time())}"
+
+    # Create the dataset first (empty)
+    log.info("[ Test: add_files_to_dataset — extend existing dataset → XRD2 ]")
+    client_std.add_dataset(scope=scope, name=dataset)
+    log.info("  Created empty dataset %s:%s", scope, dataset)
+
+    files = [
+        {"name": f"{dataset}-v2-file1", "content": "rucio-append-v2-file1\n"},
+        {"name": f"{dataset}-v2-file2", "content": "rucio-append-v2-file2\n"},
+    ]
+
+    registered = []
+    for f in files:
+        pfn = compute_pfn(client_std, "XRD1", scope, f["name"])
+        local = pfn_to_local_path("XRD1", pfn)
+        seed_file(XRD1, local, "xrootd")
+        size, adler32 = compute_metadata(XRD1, local)
+        registered.append(
+            {
+                "scope": scope,
+                "name": f["name"],
+                "bytes": size,
+                "adler32": adler32,
+                "pfn": pfn,
+            }
+        )
+        log.info("  seeded %s → %s", f["name"], local)
+
+    log.info("  Appending %d files to %s:%s", len(registered), scope, dataset)
+    client_std.add_files_to_dataset(
+        scope=scope, name=dataset, rse="XRD1", files=registered
+    )
+    log.info("  ✓ Files appended to existing dataset")
+
+    for f in registered:
+        dst_path = pfn_to_local_path(
+            "XRD2", compute_pfn(client_std, "XRD2", scope, f["name"])
+        )
+        prepare_dest_dir(XRD2, dst_path, "xrootd")
+
+    rule_id = add_rule(client_std, scope, dataset, "XRD2")
+    run_daemons(RUCIO)
+    validate_rule(client_std, rule_id, "add_files_to_dataset XRD1→XRD2", RUCIO)
