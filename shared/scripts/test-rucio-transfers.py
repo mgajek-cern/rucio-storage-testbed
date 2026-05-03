@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
 """
-Manual registration workflow — runs the three scenarios
-(XRootD GSI, StoRM OIDC, XRootD OIDC) using the Rucio Python client.
+test-rucio-transfers.py — Rucio E2E transfer tests using the Python client.
+
+Covers three scenarios:
+  - XRootD GSI   (XRD1  → XRD2,   rucio    instance, X.509 cert auth)
+  - StoRM OIDC   (STORM1 → STORM2, rucio-oidc instance, bearer tokens)
+  - XRootD OIDC  (XRD3  → XRD4,   rucio-oidc instance, SciTokens)
 
 Runtime-agnostic: respects $RUNTIME (compose | k8s, default compose).
 
 Typical invocations:
+    # Compose
     docker exec compose-rucio-client-1 \\
-        bash -c "pytest -v /scripts/test-rucio-transfers.py"
+        bash -c "RUNTIME=compose pytest /scripts/test-rucio-transfers.py"
 
+    # Kubernetes
     kubectl -n rucio-testbed exec deploy/rucio-client -- \\
-        bash -c "RUNTIME=k8s pytest -v /scripts/test-rucio-transfers.py"
+        bash -c "RUNTIME=k8s pytest /scripts/test-rucio-transfers.py"
 """
 
 import logging
-import os
 import re
-import subprocess
 import time
 import zlib
 
@@ -27,15 +31,12 @@ from rucio.common.config import get_config
 from rucio.common.exception import Duplicate, RucioException, RuleNotFound
 from rucio.rse import rsemanager as rsemgr
 
+from testbed import RUNTIME, svc_exec
+
 
 log = logging.getLogger("rucio-transfers")
 
-
-# ── Runtime detection ──────────────────────────────────────────────────────
-RUNTIME = os.getenv("RUNTIME", "compose")
-K8S_NAMESPACE = os.getenv("K8S_NAMESPACE", "rucio-testbed")
-
-# ── Topology (logical service names — no runtime details) ──────────────────
+# ── Topology ───────────────────────────────────────────────────────────────
 RUCIO = "rucio"
 RUCIO_OIDC = "rucio-oidc"
 XRD1, XRD2, XRD3, XRD4 = "xrd1", "xrd2", "xrd3", "xrd4"
@@ -45,52 +46,8 @@ FTS = "fts"
 CFG_STD = "/opt/rucio/etc/userpass-client.cfg"
 CFG_OIDC = "/opt/rucio/etc/userpass-client-for-rucio-oidc.cfg"
 
-# Maps logical service name → k8s target spec.
-# (kind, container_name); container=None means no -c flag.
-K8S_TARGETS = {
-    "rucio": ("deploy", "rucio"),
-    "rucio-oidc": ("deploy", "rucio-oidc"),
-    "fts": ("deploy", None),
-    "fts-oidc": ("deploy", None),
-    "xrd1": ("deploy", None),
-    "xrd2": ("deploy", None),
-    "xrd3": ("deploy", None),
-    "xrd4": ("deploy", None),
-    "storm1": ("statefulset", None),
-    "storm2": ("statefulset", None),
-    "webdav1": ("deploy", None),
-    "webdav2": ("deploy", None),
-}
 
-
-# ── Runtime-aware exec helper ──────────────────────────────────────────────
-def svc_exec(svc: str, cmd: list, user: str = None) -> bytes:
-    if RUNTIME == "compose":
-        full = ["docker", "exec"]
-        if user:
-            full += ["--user", user]
-        full += [f"compose-{svc}-1"] + cmd
-    elif RUNTIME == "k8s":
-        kind, container = K8S_TARGETS.get(svc, ("deploy", None))
-        target = f"{kind}/{svc}"
-        full = ["kubectl", "-n", K8S_NAMESPACE, "exec"]
-        if container:
-            full += ["-c", container]
-        full += [target, "--"] + cmd
-    else:
-        raise RuntimeError(f"Unknown RUNTIME: {RUNTIME}")
-
-    result = subprocess.run(full, capture_output=True)
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"svc_exec failed (exit {result.returncode}): {' '.join(full)}\n"
-            f"--- stdout ---\n{result.stdout.decode(errors='replace')}\n"
-            f"--- stderr ---\n{result.stderr.decode(errors='replace')}"
-        )
-    return result.stdout
-
-
-# ── Fixtures ───────────────────────────────────────────────────────────────
+# ── Rucio client factory ───────────────────────────────────────────────────
 def _client(cfg_path: str) -> Client:
     conf = get_config()
     conf.read(cfg_path)
@@ -112,13 +69,14 @@ def _client(cfg_path: str) -> Client:
     return c
 
 
+# ── Fixtures ───────────────────────────────────────────────────────────────
 @pytest.fixture(scope="session")
-def client_std():
+def client_std() -> Client:
     return _client(CFG_STD)
 
 
 @pytest.fixture(scope="session")
-def client_oidc():
+def client_oidc() -> Client:
     return _client(CFG_OIDC)
 
 
@@ -138,36 +96,32 @@ def fts_proxy():
     log.info("  %s", out.decode().strip())
 
 
-# ── Storage helpers ─────────────────────────────────────────────────────────
-def compute_metadata_from_storage(storage_svc: str, fpath: str):
+# ── Storage helpers ────────────────────────────────────────────────────────
+def compute_metadata(storage_svc: str, fpath: str) -> tuple:
+    """Return (size_bytes, adler32_hex) for a file in a service container."""
     raw = svc_exec(storage_svc, ["cat", fpath])
     size = len(raw)
     if size == 0:
         raise RuntimeError(f"File {fpath} on {storage_svc} is empty or missing")
-    adler32 = "%08x" % (zlib.adler32(raw) & 0xFFFFFFFF)
-    return size, adler32
+    return size, "%08x" % (zlib.adler32(raw) & 0xFFFFFFFF)
 
 
 def compute_pfn(client: Client, rse: str, scope: str, name: str) -> str:
     rse_info = rsemgr.get_rse_info(rse=rse, vo=client.vo)
-    mapping = rsemgr.lfns2pfns(
-        rse_info,
-        [{"scope": scope, "name": name}],
-        operation="write",
-    )
-    return list(mapping.values())[0]
+    return list(
+        rsemgr.lfns2pfns(
+            rse_info, [{"scope": scope, "name": name}], operation="write"
+        ).values()
+    )[0]
 
 
 def pfn_to_local_path(rse: str, pfn: str) -> str:
     if rse.startswith("STORM"):
         return re.sub(r"^[a-z]+://storm[1-2]:[0-9]+/data/", "/storage/data/", pfn)
-    s = re.sub(r"^[a-z]+://[^/]+", "", pfn)
-    return re.sub(r"^/+", "/", s)
+    return re.sub(r"^/+", "/", re.sub(r"^[a-z]+://[^/]+", "", pfn))
 
 
-def seed_file(storage_svc: str, fpath: str, owner: str):
-    # chown is best-effort — on k8s we can't run as root via kubectl exec,
-    # but the chart is expected to set fsGroup so the running user can write.
+def seed_file(storage_svc: str, fpath: str, owner: str) -> None:
     script = (
         "set -e; "
         f'mkdir -p "$(dirname {fpath})"; '
@@ -179,7 +133,7 @@ def seed_file(storage_svc: str, fpath: str, owner: str):
     log.info("  %s", out.decode().strip())
 
 
-def prepare_dest_dir(storage_svc: str, fpath: str, owner: str):
+def prepare_dest_dir(storage_svc: str, fpath: str, owner: str) -> None:
     script = (
         f'mkdir -p "$(dirname {fpath})" && '
         f'chown {owner}:{owner} "$(dirname {fpath})" 2>/dev/null || true'
@@ -188,7 +142,15 @@ def prepare_dest_dir(storage_svc: str, fpath: str, owner: str):
     log.info("  ✓ Destination dir ready on %s: %s", storage_svc, fpath)
 
 
-def register_replica(client, rse, scope, name, pfn, size, adler32):
+def register_replica(
+    client: Client,
+    rse: str,
+    scope: str,
+    name: str,
+    pfn: str,
+    size: int,
+    adler32: str,
+) -> None:
     log.info(
         "  Registering %s:%s at %s (bytes=%d adler32=%s)",
         scope,
@@ -218,18 +180,15 @@ def register_replica(client, rse, scope, name, pfn, size, adler32):
         raise
 
 
-def add_rule(client, scope, name, dst_rse):
-    rule_ids = client.add_replication_rule(
-        dids=[{"scope": scope, "name": name}],
-        copies=1,
-        rse_expression=dst_rse,
-    )
-    rule_id = rule_ids[0]
-    log.info("  ✓ Rule created: %s -> %s (%s)", name, dst_rse, rule_id)
+def add_rule(client: Client, scope: str, name: str, dst_rse: str) -> str:
+    rule_id = client.add_replication_rule(
+        dids=[{"scope": scope, "name": name}], copies=1, rse_expression=dst_rse
+    )[0]
+    log.info("  ✓ Rule created: %s → %s (%s)", name, dst_rse, rule_id)
     return rule_id
 
 
-def run_daemons(rucio_svc: str):
+def run_daemons(rucio_svc: str) -> None:
     log.info("=== Running daemons on %s ===", rucio_svc)
     for daemon in (
         ["rucio-judge-evaluator", "--run-once"],
@@ -248,9 +207,10 @@ def validate_rule(
     rucio_svc: str,
     timeout: int = 180,
 ) -> None:
-    """Poll until locks_ok >= 1 and locks_replicating == 0; advance daemons each loop."""
+    """Poll until locks_ok >= 1 and locks_replicating == 0; cycle daemons each loop."""
     log.info("=== Validating rule %s (%s) ===", rule_id, label)
     deadline = time.time() + timeout
+    ok = repl = stk = 0
     while time.time() < deadline:
         try:
             rule = client.get_replication_rule(rule_id)
@@ -261,24 +221,22 @@ def validate_rule(
         ok = rule["locks_ok_cnt"]
         repl = rule["locks_replicating_cnt"]
         stk = rule["locks_stuck_cnt"]
-        state = rule.get("state", "?")
-        expires = rule.get("expires_at", "never")
-
         log.info(
             "  rule state=%-12s  locks OK=%-3d REPL=%-3d STUCK=%-3d  expires=%s",
-            state,
+            rule.get("state", "?"),
             ok,
             repl,
             stk,
-            expires,
+            rule.get("expires_at", "never"),
         )
 
         if stk > 0:
-            # Log the stuck file details before raising so CI has actionable output
             try:
-                locks = list(client.list_replica_locks(rule_id))
-                stuck_locks = [lock for lock in locks if lock.get("state") == "S"]
-                for lock in stuck_locks:
+                for lock in [
+                    replica_lock
+                    for replica_lock in client.list_replica_locks(rule_id)
+                    if replica_lock.get("state") == "S"
+                ]:
                     log.error(
                         "  STUCK lock: rse=%-12s  scope=%s  name=%s",
                         lock.get("rse_id"),
@@ -308,26 +266,29 @@ def validate_rule(
     )
 
 
-def seed_and_register(client, rse, scope, name, storage_svc, owner):
-    pfn = compute_pfn(client, rse, scope, name)
-    local = pfn_to_local_path(rse, pfn)
+def transfer_workflow(
+    client: Client,
+    src_rse: str,
+    dst_rse: str,
+    src_svc: str,
+    dst_svc: str,
+    scope: str,
+    name: str,
+    rucio_svc: str,
+    owner: str,
+    label: str,
+) -> None:
+    log.info("[ Test: %s (%s → %s) ]", label, src_rse, dst_rse)
+
+    pfn = compute_pfn(client, src_rse, scope, name)
+    local = pfn_to_local_path(src_rse, pfn)
     log.info("  PFN:            %s", pfn)
     log.info("  Container path: %s", local)
+    seed_file(src_svc, local, owner)
+    size, adler32 = compute_metadata(src_svc, local)
+    register_replica(client, src_rse, scope, name, pfn, size, adler32)
 
-    seed_file(storage_svc, local, owner)
-    size, adler32 = compute_metadata_from_storage(storage_svc, local)
-    register_replica(client, rse, scope, name, pfn, size, adler32)
-
-
-def transfer_workflow(
-    client, src_rse, dst_rse, src_svc, dst_svc, scope, name, rucio_svc, owner, label
-):
-    log.info("[ Test: %s (%s -> %s) ]", label, src_rse, dst_rse)
-
-    seed_and_register(client, src_rse, scope, name, src_svc, owner)
-
-    dst_pfn = compute_pfn(client, dst_rse, scope, name)
-    dst_path = pfn_to_local_path(dst_rse, dst_pfn)
+    dst_path = pfn_to_local_path(dst_rse, compute_pfn(client, dst_rse, scope, name))
     prepare_dest_dir(dst_svc, dst_path, owner)
 
     rule_id = add_rule(client, scope, name, dst_rse)
@@ -337,15 +298,15 @@ def transfer_workflow(
 
 # ── Tests ──────────────────────────────────────────────────────────────────
 def test_xrootd_gsi(client_std, fts_proxy):
-    scope, name = "ddmlab", f"gsi-{int(time.time())}"
+    """XRootD GSI TPC: XRD1 → XRD2 via rucio (X.509 cert auth)."""
     transfer_workflow(
         client_std,
         src_rse="XRD1",
         dst_rse="XRD2",
         src_svc=XRD1,
         dst_svc=XRD2,
-        scope=scope,
-        name=name,
+        scope="ddmlab",
+        name=f"gsi-{int(time.time())}",
         rucio_svc=RUCIO,
         owner="xrootd",
         label="XRootD GSI",
@@ -353,15 +314,15 @@ def test_xrootd_gsi(client_std, fts_proxy):
 
 
 def test_storm_oidc(client_oidc):
-    scope, name = "ddmlab", f"storm-{int(time.time())}"
+    """StoRM WebDAV OIDC TPC: STORM1 → STORM2 via rucio-oidc."""
     transfer_workflow(
         client_oidc,
         src_rse="STORM1",
         dst_rse="STORM2",
         src_svc=STORM1,
         dst_svc=STORM2,
-        scope=scope,
-        name=name,
+        scope="ddmlab",
+        name=f"storm-{int(time.time())}",
         rucio_svc=RUCIO_OIDC,
         owner="storm",
         label="StoRM OIDC",
@@ -369,15 +330,15 @@ def test_storm_oidc(client_oidc):
 
 
 def test_xrootd_oidc(client_oidc):
-    scope, name = "ddmlab", f"xrd-oidc-{int(time.time())}"
+    """XRootD SciTokens TPC: XRD3 → XRD4 via rucio-oidc."""
     transfer_workflow(
         client_oidc,
         src_rse="XRD3",
         dst_rse="XRD4",
         src_svc=XRD3,
         dst_svc=XRD4,
-        scope=scope,
-        name=name,
+        scope="ddmlab",
+        name=f"xrd-oidc-{int(time.time())}",
         rucio_svc=RUCIO_OIDC,
         owner="xrootd",
         label="XRootD OIDC",

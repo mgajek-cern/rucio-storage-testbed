@@ -6,30 +6,30 @@ Covers two transfer scenarios:
   - xrd1 → webdav1  (XRootD GSI source, WebDAV destination)
   - webdav1 → xrd2  (WebDAV source, XRootD GSI destination)
 
-Seeding is handled by the Makefile test-webdav target before pytest runs.
 Runs from inside the fts container, which has the GSI proxy, xrdcp,
 xrdfs, and network access to xrd1/xrd2/webdav1/webdav2.
 
 Typical invocations:
-    # Compose (via Makefile — seeding handled there)
-    make test-webdav
+    # Compose
+    docker exec compose-fts-1 bash -c "pytest /scripts/test-fts-with-webdav.py"
 
-    # Direct (assumes seeding already done)
-    docker exec compose-fts-1 \\
-        bash -c "pip install pytest && pytest /scripts/test-fts-with-webdav.py"
-
-    # Kubernetes (via Makefile)
-    RUNTIME=k8s make test-webdav
+    # Kubernetes
+    kubectl -n rucio-testbed exec deploy/fts -- bash -c "pytest /scripts/test-fts-with-webdav.py"
 """
 
 import datetime
 import logging
 import os
-import subprocess
-import tempfile
-import time
 
 import pytest
+
+from testbed import (
+    CURL_OK_EXITS,
+    _run,
+    poll_fts_job,
+    xrd_exists,
+    xrd_seed,
+)
 
 try:
     import fts3.rest.client.easy as fts3
@@ -44,11 +44,9 @@ FTS = os.environ.get("FTS", "https://localhost:8446")
 CERT = os.environ.get("CERT", "/etc/grid-security/hostcert.pem")
 KEY = os.environ.get("KEY", "/etc/grid-security/hostkey.pem")
 CACERT = os.environ.get("CACERT", "/etc/grid-security/certificates/rucio_ca.pem")
-PROXY = os.environ.get("X509_USER_PROXY", "/tmp/x509up_u0")
 
 WEBDAV1_HOST = os.environ.get("WEBDAV1_HOST", "webdav1")
-port_env = os.environ.get("WEBDAV1_PORT", "443")
-WEBDAV1_PORT = int(port_env.split(":")[-1])
+WEBDAV1_PORT = int(os.environ.get("WEBDAV1_PORT", "443").split(":")[-1])
 WEBDAV1_BASE = f"https://{WEBDAV1_HOST}:{WEBDAV1_PORT}"
 
 XRD1_HOST = os.environ.get("XRD1_HOST", "xrd1")
@@ -65,103 +63,22 @@ WEBDAV_DST_URL = f"davs://{WEBDAV1_HOST}:{WEBDAV1_PORT}{WEBDAV_FILE_PATH}"
 
 SEED_CONTENT = "fts-test\n"
 
-_CURL_OK_EXITS = {0, 18}
 
-
-# ── Helpers ───────────────────────────────────────────────────────────────
-def _run(
-    cmd: list, env: dict = None, ok_exits: set = None
-) -> subprocess.CompletedProcess:
-    merged = {**os.environ, **(env or {})}
-    allowed = ok_exits if ok_exits is not None else {0}
-    result = subprocess.run(cmd, capture_output=True, env=merged)
-    if result.returncode not in allowed:
-        raise RuntimeError(
-            f"Command failed (exit {result.returncode}): {' '.join(cmd)}\n"
-            f"stdout: {result.stdout.decode(errors='replace')}\n"
-            f"stderr: {result.stderr.decode(errors='replace')}"
-        )
-    return result
-
-
+# ── WebDAV-specific curl helpers ──────────────────────────────────────────
 def webdav_curl(*args: str) -> str:
     """Run curl against WebDAV with client cert auth."""
-    cmd = [
-        "curl",
-        "-sk",
-        "--cert",
-        CERT,
-        "--key",
-        KEY,
-        "--cacert",
-        CACERT,
-    ] + list(args)
-    result = _run(cmd, ok_exits=_CURL_OK_EXITS)
+    cmd = ["curl", "-sk", "--cert", CERT, "--key", KEY, "--cacert", CACERT] + list(args)
+    result = _run(cmd, ok_exits=CURL_OK_EXITS)
     return result.stdout.decode(errors="replace")
 
 
 def webdav_status(*args: str) -> str:
-    """Return HTTP status code from a WebDAV curl call."""
+    """Return HTTP status code from a WebDAV curl call via header dump."""
     body = webdav_curl("-D", "-", *args)
     for line in body.splitlines():
         if line.startswith("HTTP/"):
             return line.split()[1]
     return "000"
-
-
-def xrd_seed(xrd_url: str, content: str) -> None:
-    """Write content to an XRootD URL via xrdcp."""
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".seed", delete=False) as f:
-        f.write(content)
-        tmp = f.name
-    try:
-        _run(["xrdcp", "--force", tmp, xrd_url], env={"X509_USER_PROXY": PROXY})
-        log.info("  ✓ Seeded %s via xrdcp", xrd_url)
-    finally:
-        os.unlink(tmp)
-
-
-def xrd_exists(xrd_url: str) -> bool:
-    without_scheme = xrd_url.replace("root://", "")
-    host, _, path = without_scheme.partition("/")
-    path = "/" + path.lstrip("/")
-    try:
-        _run(["xrdfs", host, "stat", path], env={"X509_USER_PROXY": PROXY})
-        return True
-    except RuntimeError:
-        return False
-
-
-def wait_for_webdav(retries: int = 20, interval: int = 3) -> None:
-    """Poll webdav1 until it responds to a PROPFIND."""
-    for i in range(1, retries + 1):
-        code = webdav_status("-X", "PROPFIND", "-H", "Depth: 0", f"{WEBDAV1_BASE}/")
-        if code in ("200", "207"):
-            log.info("  ✓ webdav1 ready (HTTP %s)", code)
-            return
-        log.info("  [%d] webdav1 not ready (HTTP %s) — waiting", i, code)
-        time.sleep(interval)
-    raise RuntimeError(f"webdav1 did not become ready after {retries} attempts")
-
-
-def poll_job(ctx, job_id: str, retries: int = 24, interval: int = 5) -> str:
-    terminal = {"FINISHED", "FAILED", "CANCELED", "FINISHEDDIRTY"}
-    state = "UNKNOWN"
-    for i in range(1, retries + 1):
-        time.sleep(interval)
-        status = fts3.get_job_status(ctx, job_id, list_files=False)
-        state = status["job_state"]
-        log.info("  [%3ds] %s", i * interval, state)
-        if state in terminal:
-            break
-    if state != "FINISHED":
-        try:
-            files = fts3.get_job_status(ctx, job_id, list_files=True)
-            for f in files.get("files", []):
-                log.error("  %s: %s", f["file_state"], f.get("reason", ""))
-        except Exception:
-            pass
-    return state
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
@@ -183,15 +100,25 @@ def delegated_context(context):
 
 @pytest.fixture(scope="session")
 def seeded_source(delegated_context):
-    wait_for_webdav()
-    log.info("=== Ensuring seeded test data ===")
+    """Ensure xrd1 and webdav1 are seeded before any transfer test."""
+    # Wait for webdav1 to be ready
+    import time
 
-    # Seed XRootD if missing
+    for i in range(1, 21):
+        code = webdav_status("-X", "PROPFIND", "-H", "Depth: 0", f"{WEBDAV1_BASE}/")
+        if code in ("200", "207"):
+            log.info("  ✓ webdav1 ready (HTTP %s)", code)
+            break
+        log.info("  [%d] webdav1 not ready (HTTP %s) — waiting", i, code)
+        time.sleep(3)
+    else:
+        raise RuntimeError("webdav1 did not become ready")
+
+    log.info("=== Ensuring seeded test data ===")
     if not xrd_exists(XRD_SRC_URL):
         log.info("  Seeding xrd1 via xrdcp")
         xrd_seed(XRD_SRC_URL, SEED_CONTENT)
 
-    # Seed WebDAV (always safe to overwrite)
     log.info("  Seeding webdav1 via PUT")
     webdav_curl(
         "-X", "PUT", "--data-binary", SEED_CONTENT, f"{WEBDAV1_BASE}{WEBDAV_FILE_PATH}"
@@ -199,7 +126,6 @@ def seeded_source(delegated_context):
 
     assert xrd_exists(XRD_SRC_URL), f"Failed to seed {XRD_SRC_URL}"
     log.info("  ✓ Test data ready")
-
     yield XRD_SRC_URL
 
 
@@ -231,7 +157,7 @@ def test_xrd_to_webdav(delegated_context, seeded_source):
     transfer = fts3.new_transfer(XRD_SRC_URL, WEBDAV_DST_URL)
     job_id = fts3.submit(delegated_context, fts3.new_job([transfer], overwrite=True))
     log.info("  Job ID: %s", job_id)
-    state = poll_job(delegated_context, job_id)
+    state = poll_fts_job(delegated_context, job_id)
     assert state == "FINISHED", f"xrd1→webdav1 failed: state={state}"
     log.info("  ✓ xrd1 → webdav1 FINISHED")
 
@@ -253,7 +179,7 @@ def test_webdav_to_xrd(delegated_context, seeded_source):
     transfer = fts3.new_transfer(WEBDAV_SRC_URL, XRD_DST_URL)
     job_id = fts3.submit(delegated_context, fts3.new_job([transfer], overwrite=True))
     log.info("  Job ID: %s", job_id)
-    state = poll_job(delegated_context, job_id)
+    state = poll_fts_job(delegated_context, job_id)
     assert state == "FINISHED", f"webdav1→xrd2 failed: state={state}"
     log.info("  ✓ webdav1 → xrd2 FINISHED")
 
