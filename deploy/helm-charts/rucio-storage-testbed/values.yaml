@@ -242,24 +242,32 @@ xrd1:
   fullnameOverride: xrd1
   certFile: xrd1cert.pem
   keyFile: xrd1key.pem
+  scitokens:
+    enabled: false
 
 xrd2:
   enabled: true
   fullnameOverride: xrd2
   certFile: xrd2cert.pem
   keyFile: xrd2key.pem
+  scitokens:
+    enabled: false
 
 xrd3:
   enabled: true
   fullnameOverride: xrd3
   certFile: xrd3cert.pem
   keyFile: xrd3key.pem
+  scitokens:
+    enabled: true
 
 xrd4:
   enabled: true
   fullnameOverride: xrd4
   certFile: xrd4cert.pem
   keyFile: xrd4key.pem
+  scitokens:
+    enabled: true
 
 # ===========================================================================
 # WebDAV endpoints

@@ -1,6 +1,11 @@
 apiVersion: v2
 name: xrootd
-description: XRootD server for the Rucio storage testbed (GSI / VOMS auth)
+description: >
+  XRootD server for the Rucio storage testbed.
+  Supports both GSI/VOMS (scitokens.enabled=false, default) and
+  SciTokens/OIDC (scitokens.enabled=true) auth modes.
+  The umbrella installs this chart four times: xrd1, xrd2 (GSI) and
+  xrd3, xrd4 (SciTokens).
 type: application
 version: 0.1.0
 appVersion: "5"
@@ -8,3 +13,5 @@ keywords:
   - rucio
   - xrootd
   - storage
+  - gsi
+  - scitokens

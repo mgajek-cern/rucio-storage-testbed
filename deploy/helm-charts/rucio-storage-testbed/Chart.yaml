@@ -65,15 +65,14 @@ dependencies:
     repository: "file://../xrootd"
     alias: xrd2
     condition: xrd2.enabled
-
-  - name: xrootd-scitokens
+  - name: xrootd
     version: "0.1.0"
-    repository: "file://../xrootd-scitokens"
+    repository: "file://../xrootd"
     alias: xrd3
     condition: xrd3.enabled
-  - name: xrootd-scitokens
+  - name: xrootd
     version: "0.1.0"
-    repository: "file://../xrootd-scitokens"
+    repository: "file://../xrootd"
     alias: xrd4
     condition: xrd4.enabled
 

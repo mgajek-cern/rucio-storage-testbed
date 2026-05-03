@@ -42,8 +42,31 @@ spec:
               mountPath: /tmp/xrdkey.pem
               subPath: {{ .Values.keyFile }}
             - name: certs
-              mountPath: /etc/pki/ca-trust/source/anchors/rucio_ca.pem
+              mountPath: /etc/pki/ca-trust/source/anchors/rucio-ca.crt
               subPath: rucio_ca.pem
+            - name: scripts
+              mountPath: /usr/local/bin/docker-entrypoint.sh
+              subPath: docker-entrypoint.sh
+              readOnly: true
+            {{- if .Values.scitokens.enabled }}
+            # SciTokens mode: single CA hash, no signing policy needed
+            - name: certs
+              mountPath: /etc/grid-security/certificates/5fca1cb1.0
+              subPath: rucio_ca.pem
+            - name: configs
+              mountPath: /etc/xrootd/xrdrucio.cfg
+              subPath: xrdrucio-scitokens.cfg
+              readOnly: true
+            - name: configs
+              mountPath: /etc/xrootd/authdb
+              subPath: authdb
+              readOnly: true
+            - name: configs
+              mountPath: /etc/xrootd/scitokens.conf
+              subPath: scitokens.conf
+              readOnly: true
+            {{- else }}
+            # GSI mode: both CA hashes + signing policies required by libXrdSecgsi
             - name: certs
               mountPath: /etc/grid-security/certificates/5fca1cb1.0
               subPath: 5fca1cb1.0
@@ -59,13 +82,10 @@ spec:
             - name: configs
               mountPath: /etc/grid-security/grid-mapfile
               subPath: grid-mapfile
-            - name: scripts
-              mountPath: /usr/local/bin/docker-entrypoint.sh
-              subPath: docker-entrypoint.sh
-              readOnly: true
             - name: configs
               mountPath: /etc/xrootd/xrdrucio.cfg
               subPath: xrdrucio-gsi.cfg
+            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:
@@ -80,15 +100,10 @@ spec:
               - key: {{ .Values.keyFile }}
                 path: {{ .Values.keyFile }}
                 mode: 0600
-              - key: hostcert.pem
-                path: hostcert.pem
-                mode: 0600
-              - key: hostkey.pem
-                path: hostkey.pem
-                mode: 0600
               - key: rucio_ca.pem
                 path: rucio_ca.pem
                 mode: 0644
+              {{- if not .Values.scitokens.enabled }}
               - key: 5fca1cb1.0
                 path: 5fca1cb1.0
                 mode: 0644
@@ -101,6 +116,7 @@ spec:
               - key: b96dc756.signing_policy
                 path: b96dc756.signing_policy
                 mode: 0644
+              {{- end }}
         - name: configs
           configMap:
             name: {{ .Values.configsConfigMap }}

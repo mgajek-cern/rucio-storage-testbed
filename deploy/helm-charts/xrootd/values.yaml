@@ -1,33 +1,50 @@
-# Default values for the xrootd chart.
-# This chart deploys one XRootD instance. The umbrella chart installs it
-# twice (xrd1, xrd2) with different `fullnameOverride`s.
+# Default values for the unified xrootd chart.
+#
+# Auth mode is controlled by scitokens.enabled:
+#   false (default) — GSI/VOMS mode (xrd1, xrd2)
+#     Mounts: xrdrucio-gsi.cfg, grid-mapfile, 5fca1cb1.{0,signing_policy},
+#             b96dc756.{0,signing_policy}
+#   true            — SciTokens/OIDC mode (xrd3, xrd4)
+#     Mounts: xrdrucio-scitokens.cfg, authdb, scitokens.conf,
+#             5fca1cb1.0 (single hash, no signing policy)
+#
+# The umbrella installs this chart four times with different
+# fullnameOverrides and certFile/keyFile values:
+#   xrd1: fullnameOverride=xrd1 certFile=xrd1cert.pem keyFile=xrd1key.pem
+#   xrd2: fullnameOverride=xrd2 certFile=xrd2cert.pem keyFile=xrd2key.pem
+#   xrd3: fullnameOverride=xrd3 certFile=xrd3cert.pem keyFile=xrd3key.pem scitokens.enabled=true
+#   xrd4: fullnameOverride=xrd4 certFile=xrd4cert.pem keyFile=xrd4key.pem scitokens.enabled=true
 
 image:
   repository: mgajekcern/test-xrd
   tag: latest
   pullPolicy: IfNotPresent
 
-# Service hostname — must match what the Rucio RSE entries expect
 fullnameOverride: ""
 
 service:
   type: ClusterIP
   port: 1094
 
-# XRDPORT env var
 xrdPort: 1094
 
 certFile: xrd1cert.pem
 keyFile: xrd1key.pem
 
-# Name of the Secret holding TLS certs (created by the umbrella chart).
-# Keys used: xrdcert.pem, xrdkey.pem, rucio_ca.pem
+# ── Auth mode ─────────────────────────────────────────────────────────────
+scitokens:
+  # Set to true for xrd3/xrd4 (SciTokens/OIDC).
+  # Set to false (default) for xrd1/xrd2 (GSI/VOMS).
+  enabled: false
+
+# ── Shared artifacts (managed by umbrella chart) ──────────────────────────
 certsSecret: testbed-certs
 
-# ConfigMap holding the grid-mapfile
+# Holds: xrdrucio-gsi.cfg, xrdrucio-scitokens.cfg, grid-mapfile,
+#        authdb, scitokens.conf
 configsConfigMap: testbed-configs
 
-# Holds docker-entrypoint.sh
+# Holds docker-entrypoint.sh (in the -xrootd sub-ConfigMap)
 scriptsConfigMap: testbed-scripts
 
 resources: {}
