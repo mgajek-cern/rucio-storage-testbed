@@ -1,8 +1,8 @@
 # rucio-storage-testbed
 
-Multi-architecture Rucio + FTS3 integration testbed with XRootD, WebDAV, S3, StoRM WebDAV and Keycloak OIDC authentication. Enables end-to-end transfer testing on both `linux/amd64` and `linux/arm64`, including Apple Silicon Macs.
+Multi-architecture Rucio + FTS3 distributed storage testbed with XRootD (GSI and SciTokens), Apache WebDAV, S3/MinIO, StoRM WebDAV and Keycloak OIDC authentication. Runs end-to-end transfer tests on both `linux/amd64` and `linux/arm64`, including Apple Silicon Macs, across two runtimes: Docker Compose and Kubernetes via kind.
 
-> **Design Goal:** This testbed is designed to validate **service-to-service orchestration**. While user interaction is simplified via `USERPASS` to streamline automation, the backend tests **OIDC token-based submission** and **GSI proxy delegation** across the Rucio-FTS-Storage chain.
+> **Design Goal:** Validate the full **service-to-service orchestration chain** — Rucio → FTS3 → storage — across all supported auth models: X.509 GSI proxy delegation, OIDC/SciTokens bearer token TPC and S3 signed credentials. User-facing auth is simplified via `USERPASS` to streamline automation; the backend exercises **OIDC token orchestration**, **GSI proxy delegation**, **third-party copy (TPC)** and **cross-protocol transfers (XRootD ↔ WebDAV ↔ S3 ↔ StoRM)**. All integration tests are implemented as self-contained pytest suites that run inside the relevant service containers.
 
 ## Features in a nutshell
 
@@ -175,12 +175,12 @@ sequenceDiagram
 
 | Protocol / Target | Auth Model | Execution Command |
 | :--- | :--- | :--- |
-| **Rucio E2E** | Hybrid (Userpass + GSI + OIDC) | `./shared/scripts/test-rucio-transfers.py` |
+| **Rucio E2E** | Hybrid (Userpass + X.509 GSI + OIDC Token/SciToken) | `./shared/scripts/test-rucio-transfers.py` |
 | **XRootD TPC** | X.509 GSI | `docker exec -it compose-fts-1 python3 /scripts/test-fts-with-xrootd.py` |
 | **S3 / MinIO** | Signed URLs | `./shared/scripts/test-fts-with-s3.sh` |
 | **WebDAV** | X.509 GSI | `./shared/scripts/test-fts-with-webdav.sh` |
 | **StoRM WebDAV** | OIDC Token | `./shared/scripts/test-fts-with-storm-webdav.sh` |
-| **XRootD TPC** | OIDC Token | `./shared/scripts/test-fts-with-xrootd-scitokens.sh` |
+| **XRootD TPC** | SciToken | `./shared/scripts/test-fts-with-xrootd-scitokens.sh` |
 
 **NOTE:** The Rucio E2E tests validate the Manual Registration pattern (view [the user workflows document](./docs/user-workflows.md)), where files are seeded directly onto storage before being registered in the Rucio catalog.
 
