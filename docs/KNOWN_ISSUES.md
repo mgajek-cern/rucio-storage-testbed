@@ -1,37 +1,38 @@
-# Known Issues
+# Known Issues and Operational Notes
 
-This document tracks known bugs, open investigations, and workarounds in the
+This document tracks known bugs, open investigations, workarounds, and
+intentional design decisions with security or operational implications in the
 rucio-storage-testbed. The goal is to prevent re-investigation of issues that
 have already been examined.
 
-## S3 / MinIO test: HTTP 400 on VO grant (k8s)
+## Security Posture
 
-**Status:** Open. Likely a quick fix but unverified.
+### rucio-client and fts pods have cluster exec permissions on k8s
 
-`make test-s3` fails on k8s with:
+The `rucio-client`, `fts`, and `fts-oidc` pods ship with `kubectl` and a
+ServiceAccount that grants `get`/`list`/`create` on `pods/exec`, `pods`, and
+`deployments` within the testbed namespace. This lets the pytest suites
+(`test-rucio-transfers.py`, `test-fts-with-storm-webdav.py`) orchestrate
+seed/setup operations against storage pods the same way the compose version
+uses the Docker socket.
 
-```
-register S3:minio1: HTTP 201
-grant VO access to S3:minio1: HTTP 400
-```
+This is appropriate for a development testbed but should be reviewed before
+adopting the chart in shared or production-adjacent clusters. All
+ServiceAccounts are namespace-scoped (Role/RoleBinding, not ClusterRole), so
+blast radius is limited to the testbed namespace.
 
-The credential registers fine; the VO grant fails. Probably the VO
-identifier the test uses doesn't match what the rucio-oidc instance is
-configured with on k8s (the OIDC FTS instance shows
-`vos: ["637380c6b100c14e"]`, which is a hashed identifier, not "def").
+### Docker socket mounted into fts and fts-oidc containers (compose)
 
-Investigate by capturing the request body and rucio-oidc server logs
-during the call.
+The compose stack mounts `/var/run/docker.sock` into the `fts` and `fts-oidc`
+containers so that `svc_exec` helpers in the test suite can reach sibling
+containers. This grants root-equivalent access to the Docker daemon on the
+host. Acceptable for a local development testbed; remove the bind mount before
+running in any shared environment.
 
-## rucio-client pod has cluster exec permissions on k8s
+## Open Issues
 
-The `rucio-client` pod ships with `kubectl` and a ServiceAccount that
-grants `get`/`list`/`create` on `pods/exec`, `pods`, and `deployments`
-within the testbed namespace. This lets `test-rucio-transfers.py`
-orchestrate seed/setup operations against storage and FTS pods the
-same way the compose version uses the docker socket.
+### S3 / MinIO: HTTP 400 on VO grant (k8s)
 
-This is appropriate for a development testbed but should be reviewed
-before adopting the chart in shared or production-adjacent clusters.
-The ServiceAccount is namespace-scoped (Role/RoleBinding, not Cluster*),
-so blast radius is limited to the testbed namespace.
+**Status:** Resolved. Fixed by using `vo_name: "*"` wildcard instead of
+dynamically fetching the VO from `/whoami`. See `test-fts-with-s3.py` and the
+`fix(k8s/s3)` commit for details.
