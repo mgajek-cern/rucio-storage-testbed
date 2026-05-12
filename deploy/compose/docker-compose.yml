@@ -423,6 +423,8 @@ services:
       - ${TESTBED_HOST_SOURCE}/certs/storm1key.pem:/etc/grid-security/hostkey.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.0:/etc/grid-security/certificates/5fca1cb1.0:ro
       - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.signing_policy:/etc/grid-security/certificates/5fca1cb1.signing_policy:ro
+      - ${TESTBED_HOST_SOURCE}/certs/b96dc756.0:/etc/grid-security/certificates/b96dc756.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/b96dc756.signing_policy:/etc/grid-security/certificates/b96dc756.signing_policy:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/storm-webdav/storm-application-issuers.yml:/app/application-issuers.yml:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/storm-webdav/storm-application-policies.yml:/app/application-policies.yml:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/storm-webdav/data.properties:/etc/storm/webdav/sa.d/data.properties:ro
@@ -468,6 +470,8 @@ services:
       - ${TESTBED_HOST_SOURCE}/certs/storm2key.pem:/etc/grid-security/hostkey.pem:ro
       - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.0:/etc/grid-security/certificates/5fca1cb1.0:ro
       - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.signing_policy:/etc/grid-security/certificates/5fca1cb1.signing_policy:ro
+      - ${TESTBED_HOST_SOURCE}/certs/b96dc756.0:/etc/grid-security/certificates/b96dc756.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/b96dc756.signing_policy:/etc/grid-security/certificates/b96dc756.signing_policy:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/storm-webdav/storm-application-issuers.yml:/app/application-issuers.yml:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/storm-webdav/storm-application-policies.yml:/app/application-policies.yml:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/storm-webdav/data.properties:/etc/storm/webdav/sa.d/data.properties:ro
@@ -482,12 +486,12 @@ services:
       start_period: 90s
       retries: 20
 
-  teapot:
+  teapot1:
     build:
       context: ${TESTBED_HOST_SOURCE}
       dockerfile: deploy/compose/Dockerfile.teapot
     platform: linux/amd64
-    hostname: teapot
+    hostname: teapot1
     ports:
       - "8081:8081"
     depends_on:
@@ -501,15 +505,60 @@ services:
       - ${TESTBED_HOST_SOURCE}/shared/config/teapot/config.ini:/etc/teapot/config.ini:ro
       - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/usr/local/share/ca-certificates/rucio-ca.crt:ro
       - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/var/lib/teapot/webdav/Teapot-testing.crt:ro
-      - ${TESTBED_HOST_SOURCE}/certs/teapotcert.pem:/var/lib/teapot/webdav/teapot.crt:ro
-      - ${TESTBED_HOST_SOURCE}/certs/teapotkey.pem:/var/lib/teapot/webdav/teapot.key:ro
+      - ${TESTBED_HOST_SOURCE}/certs/teapot1cert.pem:/var/lib/teapot/webdav/teapot.crt:ro
+      - ${TESTBED_HOST_SOURCE}/certs/teapot1key.pem:/var/lib/teapot/webdav/teapot.key:ro
       - ${TESTBED_HOST_SOURCE}/certs/storm-webdav-localhostcert.pem:/etc/storm/webdav/localhost.crt:ro
       - ${TESTBED_HOST_SOURCE}/certs/storm-webdav-localhostkey.pem:/etc/storm/webdav/localhost.key:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.0:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.signing_policy:/etc/grid-security/certificates/5fca1cb1.signing_policy:ro
+      - ${TESTBED_HOST_SOURCE}/certs/b96dc756.0:/etc/grid-security/certificates/b96dc756.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/b96dc756.signing_policy:/etc/grid-security/certificates/b96dc756.signing_policy:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/teapot/application.yml:/var/lib/teapot/user-teapot/config/application.yml:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/teapot/teapot-data.properties:/var/lib/teapot/user-teapot/sa.d/data.properties:ro
       - ${TESTBED_HOST_SOURCE}/shared/config/teapot/user-mapping.csv:/etc/teapot/user-mapping.csv:ro
+      - ${TESTBED_HOST_SOURCE}/shared/config/teapot/teapot-logback.xml:/etc/teapot/logback.xml:ro
       - ${TESTBED_HOST_SOURCE}/shared/patches/teapot/teapot.py:/usr/share/teapot/teapot.py:ro
-      - teapot-data:/data
+      - teapot1-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-sk", "https://localhost:8081/docs", "-o", "/dev/null", "-w", "%{http_code}"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+
+  teapot2:
+    build:
+      context: ${TESTBED_HOST_SOURCE}
+      dockerfile: deploy/compose/Dockerfile.teapot
+    platform: linux/amd64
+    hostname: teapot2
+    ports:
+      - "8082:8081"
+    depends_on:
+      - keycloak
+    networks:
+      - rucio-storage-testbed
+    environment:
+      - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+      - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+    volumes:
+      - ${TESTBED_HOST_SOURCE}/shared/config/teapot/config.ini:/etc/teapot/config.ini:ro
+      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/usr/local/share/ca-certificates/rucio-ca.crt:ro
+      - ${TESTBED_HOST_SOURCE}/certs/rucio_ca.pem:/var/lib/teapot/webdav/Teapot-testing.crt:ro
+      - ${TESTBED_HOST_SOURCE}/certs/teapot2cert.pem:/var/lib/teapot/webdav/teapot.crt:ro
+      - ${TESTBED_HOST_SOURCE}/certs/teapot2key.pem:/var/lib/teapot/webdav/teapot.key:ro
+      - ${TESTBED_HOST_SOURCE}/certs/storm-webdav-localhostcert.pem:/etc/storm/webdav/localhost.crt:ro
+      - ${TESTBED_HOST_SOURCE}/certs/storm-webdav-localhostkey.pem:/etc/storm/webdav/localhost.key:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.0:/etc/grid-security/certificates/5fca1cb1.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/5fca1cb1.signing_policy:/etc/grid-security/certificates/5fca1cb1.signing_policy:ro
+      - ${TESTBED_HOST_SOURCE}/certs/b96dc756.0:/etc/grid-security/certificates/b96dc756.0:ro
+      - ${TESTBED_HOST_SOURCE}/certs/b96dc756.signing_policy:/etc/grid-security/certificates/b96dc756.signing_policy:ro
+      - ${TESTBED_HOST_SOURCE}/shared/config/teapot/application.yml:/var/lib/teapot/user-teapot/config/application.yml:ro
+      - ${TESTBED_HOST_SOURCE}/shared/config/teapot/teapot-data.properties:/var/lib/teapot/user-teapot/sa.d/data.properties:ro
+      - ${TESTBED_HOST_SOURCE}/shared/config/teapot/user-mapping.csv:/etc/teapot/user-mapping.csv:ro
+      - ${TESTBED_HOST_SOURCE}/shared/config/teapot/teapot-logback.xml:/etc/teapot/logback.xml:ro
+      - ${TESTBED_HOST_SOURCE}/shared/patches/teapot/teapot.py:/usr/share/teapot/teapot.py:ro
+      - teapot2-data:/data
     healthcheck:
       test: ["CMD", "curl", "-sk", "https://localhost:8081/docs", "-o", "/dev/null", "-w", "%{http_code}"]
       interval: 10s
@@ -714,4 +763,5 @@ volumes:
   ruciodb-oidc-data:
   ftsdb-oidc-data:
   vomsdir:
-  teapot-data:
+  teapot1-data:
+  teapot2-data:

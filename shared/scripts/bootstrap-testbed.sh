@@ -243,6 +243,22 @@ configure_rses() {
             $cmd rse add-protocol "$rse" --scheme "$scheme" --hostname "$host" --port "$port" --prefix /data \
                 --impl rucio.rse.protocols.gfal.Default --domain-json "$domains"
         done
+
+        for rse in TEAPOT1 TEAPOT2; do
+            local instance=$(echo "$rse" | tr '[:upper:]' '[:lower:]')
+            $cmd rse add "$rse" || true
+            $cmd rse set-attribute --rse "$rse" --key fts --value "$FTS_OIDC"
+            $cmd rse set-attribute --rse "$rse" --key oidc_support --value True
+            $cmd rse set-attribute --rse "$rse" --key auth_type --value OIDC
+            $cmd rse set-attribute --rse "$rse" --key audience --value "teapot"
+            $cmd rse set-attribute --rse "$rse" --key verify_checksum --value False
+            $cmd rse add-protocol "$rse" --scheme davs \
+                --hostname "${instance}" --port 8081 --prefix /data \
+                --impl rucio.rse.protocols.gfal.Default \
+                --domain-json '{"wan":{"read":1,"write":1,"delete":1,"third_party_copy_read":1,"third_party_copy_write":1},"lan":{"read":1,"write":1,"delete":1}}'
+        done
+        $cmd rse add-distance TEAPOT1 TEAPOT2 --distance 1 || true
+        $cmd rse add-distance TEAPOT2 TEAPOT1 --distance 1 || true
     fi
 
     # Distances — XRD1/2 and WEBDAV on both; OIDC-only pairs only on OIDC.
@@ -314,6 +330,11 @@ setup_scopes_and_quotas() {
 
     for rse in STORM1 STORM2 XRD3 XRD4; do
         ra_oidc account set-limits root "$rse" -1 || true
+        ra_oidc account set-limits randomaccount "$rse" -1 || true
+        ra_oidc account set-limits ddmlab "$rse" -1 || true
+    done
+
+    for rse in TEAPOT1 TEAPOT2; do
         ra_oidc account set-limits randomaccount "$rse" -1 || true
         ra_oidc account set-limits ddmlab "$rse" -1 || true
     done

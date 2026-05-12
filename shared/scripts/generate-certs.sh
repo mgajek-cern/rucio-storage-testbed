@@ -64,9 +64,13 @@ generate_service_certs() {
         chmod 644 "$CERTS/${host}key.pem"
     done
 
-    write_ext_file /tmp/teapot-ext.cnf "teapot,localhost" server
-    mint_cert "teapot" "teapot" /tmp/teapot-ext.cnf
-    chmod 644 "$CERTS/teapotkey.pem"
+    for instance in teapot1 teapot2; do
+        write_ext_file "/tmp/${instance}-ext.cnf" "${instance},localhost" server
+        mint_cert "${instance}" "${instance}" "/tmp/${instance}-ext.cnf"
+        chmod 644 "$CERTS/${instance}key.pem"
+    done
+    cp "$CERTS/teapot1cert.pem" "$CERTS/teapotcert.pem"
+    cp "$CERTS/teapot1key.pem"  "$CERTS/teapotkey.pem"
 
     # Storm-WebDAV localhost cert (for Teapot's internal Storm-WebDAV instance)
     write_ext_file /tmp/storm-webdav-localhost-ext.cnf "localhost" server
@@ -98,8 +102,7 @@ setup_trust_anchors() {
         chmod 644 "$CERTS/${H}.0"
     done
 
-    CA_SUBJECT=$(openssl x509 -noout -subject -nameopt compat -in "$CERTS/rucio_ca.pem" | sed 's/^subject=//; s/, /\//g')
-    [[ "$CA_SUBJECT" != /* ]] && CA_SUBJECT="/$CA_SUBJECT"
+    CA_SUBJECT=$(openssl x509 -noout -subject -nameopt compat -in "$CERTS/rucio_ca.pem" | sed 's/^subject=//; s/^\///')
 
     for H in "$HASH_NEW" "$HASH_OLD"; do
         cat > "$CERTS/${H}.signing_policy" <<EOF

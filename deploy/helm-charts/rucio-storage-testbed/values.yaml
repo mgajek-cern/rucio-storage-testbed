@@ -37,6 +37,14 @@ certs:
     storm2cert.pem: ""
     storm2key.pem: ""
     storm-cacerts: ""
+    teapot1cert.pem: ""
+    teapot1key.pem: ""
+    teapot2cert.pem: ""
+    teapot2key.pem: ""
+    5fca1cb1.0: ""
+    b96dc756.0: ""
+    5fca1cb1.signing_policy: ""
+    b96dc756.signing_policy: ""
 
 configs:
   create: true
@@ -338,7 +346,24 @@ rucioClient:
 # Teapot pod
 # ===========================================================================
 
-teapot:
+teapot1:
   enabled: true
-  fullnameOverride: teapot
-  keycloakIssuer: "https://keycloak:8443/realms/rucio"
+  fullnameOverride: teapot1
+  trustSecret: testbed-certs
+  certFiles:
+    teapotcert: teapot1cert.pem
+    teapotkey: teapot1key.pem
+    stormLocalcert: storm-webdav-localhostcert.pem
+    stormLocalkey: storm-webdav-localhostkey.pem
+    ca: rucio_ca.pem
+
+teapot2:
+  enabled: true
+  fullnameOverride: teapot2
+  trustSecret: testbed-certs
+  certFiles:
+    teapotcert: teapot2cert.pem
+    teapotkey: teapot2key.pem
+    stormLocalcert: storm-webdav-localhostcert.pem
+    stormLocalkey: storm-webdav-localhostkey.pem
+    ca: rucio_ca.pem

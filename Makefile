@@ -128,12 +128,12 @@ test-xrootd-gsi: ## XRootD TPC test with X.509 GSI
 test-s3: ## S3/MinIO test with signed URLs
 	$(EXEC_FTS) bash -c "pytest /tests/test-fts-with-s3.py"
 
-.PHONY: test-webdav
-test-webdav: ## WebDAV TPC test with X.509 GSI
+.PHONY: test-webdav-gsi
+test-webdav-gsi: ## WebDAV TPC test with X.509 GSI
 	$(EXEC_FTS) bash -c "RUNTIME=$(RUNTIME) K8S_NAMESPACE=$(K8S_NAMESPACE) pytest /tests/test-fts-with-webdav.py"
 
-.PHONY: test-storm
-test-storm: ## StoRM WebDAV TPC test with OIDC tokens
+.PHONY: test-storm-oidc
+test-storm-oidc: ## StoRM WebDAV TPC test with OIDC tokens
 	$(EXEC_FTS_OIDC) bash -c "RUNTIME=$(RUNTIME) K8S_NAMESPACE=$(K8S_NAMESPACE) pytest /tests/test-fts-with-storm-webdav.py"
 
 .PHONY: test-xrootd-oidc
@@ -141,17 +141,26 @@ test-xrootd-oidc: ## XRootD TPC test with OIDC tokens (SciTokens)
 	$(EXEC_FTS_OIDC) bash -c "pytest /tests/test-fts-with-xrootd-scitokens.py"
 
 .PHONY: test-rucio
-test-rucio: ## Rucio E2E transfer test
+test-rucio: ## Rucio E2E TPC transfer test
 	$(EXEC_RUCIO) bash -c "RUNTIME=$(RUNTIME) K8S_NAMESPACE=$(K8S_NAMESPACE) pytest /tests/test-rucio-transfers.py"
 
-.PHONY: test-happy-pathes
-test-happy-pathes: ## Run all happy-path tests (in series)
+.PHONY: test-teapot
+test-teapot: ## Teapot WebDAV test with OIDC tokens
+	$(EXEC_RUCIO) bash -c "RUNTIME=$(RUNTIME) K8S_NAMESPACE=$(K8S_NAMESPACE) pytest /tests/test-teapot-webdav.py -v"
+
+.PHONY: test-teapot-oidc
+test-teapot-oidc: ## Teapot StoRM WebDAV instance TPC test with OIDC tokens
+	$(EXEC_FTS_OIDC) bash -c "RUNTIME=$(RUNTIME) K8S_NAMESPACE=$(K8S_NAMESPACE) pytest /tests/test-fts-with-teapot.py -v"
+
+.PHONY: test-happy-paths
+test-happy-paths: ## Run all happy-path tests (in series)
 	$(MAKE) test-xrootd-gsi
 	$(MAKE) test-s3
-	$(MAKE) test-webdav
-	$(MAKE) test-storm
+	$(MAKE) test-webdav-gsi
+	$(MAKE) test-storm-oidc
 	$(MAKE) test-xrootd-oidc
 	$(MAKE) test-rucio
+	$(MAKE) test-teapot-oidc
 
 .PHONY: test-failure-modes
 test-failure-modes: ## Run fast failure mode tests
@@ -161,10 +170,6 @@ test-failure-modes: ## Run fast failure mode tests
 .PHONY: test-failure-modes-slow
 test-failure-modes-slow: ## Run slow failure mode tests (token expiry, etc.)
 	$(EXEC_RUCIO) bash -c "RUNTIME=$(RUNTIME) pytest /tests/test-rucio-token-expiry.py"
-
-.PHONY: test-teapot
-test-teapot: ## Teapot WebDAV test with OIDC tokens
-	$(EXEC_RUCIO) bash -c "RUNTIME=$(RUNTIME) K8S_NAMESPACE=$(K8S_NAMESPACE) pytest /tests/test-teapot.py -v"
 
 ## Development
 
