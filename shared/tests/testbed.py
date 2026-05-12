@@ -48,6 +48,8 @@ K8S_TARGETS: dict[str, tuple[str, Optional[str]]] = {
     "minio2": ("statefulset", None),
     "webdav1": ("deploy", None),
     "webdav2": ("deploy", None),
+    "teapot1": ("deploy", None),
+    "teapot2": ("deploy", None),
 }
 
 # curl exit 18 = CURLE_PARTIAL_FILE: FTS Apache/mod_wsgi closes the connection
@@ -635,3 +637,87 @@ def wait_for_http(
             log.info("  [%d] %s unreachable (%s) — waiting", i, label, e)
         time.sleep(interval)
     raise RuntimeError(f"{label} did not become ready after {retries} attempts")
+
+
+# ── WebDAV helpers ────────────────────────────────────────────
+
+
+# ── WebDAV helpers ─────────────────────────────────────────────────────────
+
+
+def webdav_put(
+    url: str, token: str, content: bytes, timeout: int = 30
+) -> requests.Response:
+    """PUT content to a WebDAV endpoint with a bearer token."""
+    return requests.put(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        data=content,
+        verify=False,
+        timeout=timeout,
+    )
+
+
+def webdav_get(url: str, token: str, timeout: int = 30) -> requests.Response:
+    """GET a resource from a WebDAV endpoint with a bearer token."""
+    return requests.get(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        verify=False,
+        timeout=timeout,
+    )
+
+
+def webdav_delete(url: str, token: str, timeout: int = 30) -> requests.Response:
+    """DELETE a resource from a WebDAV endpoint with a bearer token."""
+    return requests.delete(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        verify=False,
+        timeout=timeout,
+    )
+
+
+def webdav_propfind(
+    url: str, token: str, depth: str = "1", timeout: int = 240
+) -> requests.Response:
+    """PROPFIND a WebDAV collection with a bearer token."""
+    return requests.request(
+        "PROPFIND",
+        url,
+        headers={"Authorization": f"Bearer {token}", "Depth": depth},
+        verify=False,
+        timeout=timeout,
+    )
+
+
+def webdav_warm_up(
+    base_url: str,
+    path: str,
+    label: str,
+    token: str,
+    retries: int = 3,
+    interval: int = 5,
+) -> None:
+    """Trigger a Storm-WebDAV cold start via PROPFIND and wait for HTTP 207.
+
+    Teapot spawns a per-user Storm-WebDAV JVM on the first authenticated
+    request. This function blocks until the JVM is ready (~30s cold start)
+    or raises AssertionError after `retries` attempts.
+    """
+    log.info("=== Warming up %s Storm-WebDAV instance ===", label)
+    resp = None
+    for attempt in range(1, retries + 1):
+        resp = webdav_propfind(f"{base_url}{path}", token)
+        if resp.status_code == 207:
+            log.info("  ✓ %s Storm-WebDAV ready (HTTP 207)", label)
+            return
+        log.info(
+            "  [%d] %s returned HTTP %s — retrying", attempt, label, resp.status_code
+        )
+        time.sleep(interval)
+    raise AssertionError(
+        f"{label} warm-up PROPFIND failed after {retries} attempts "
+        f"(last HTTP {resp.status_code if resp else 'N/A'}): "
+        f"{resp.text[:200] if resp else ''}"
+    )

@@ -34,7 +34,7 @@ RUNTIME=compose make bootstrap
 # 4. Run transfer tests
 RUNTIME=compose make test-rucio
 # Or run all happy-path tests
-RUNTIME=compose make test-happy-pathes
+RUNTIME=compose make test-happy-paths
 
 # 5. Run fast failure mode tests
 RUNTIME=compose make test-failure-modes
@@ -57,7 +57,7 @@ RUNTIME=k8s make bootstrap
 # 4. Run transfer tests
 RUNTIME=k8s make test-rucio
 # Or run all happy-path tests
-RUNTIME=k8s make test-happy-pathes
+RUNTIME=k8s make test-happy-paths
 
 # 5. Run fast failure mode tests
 RUNTIME=k8s make test-failure-modes
@@ -94,14 +94,15 @@ Helm / Kubernetes lifecycle (helm-*, k8s-*)
 Tests
   test-xrootd-gsi            XRootD TPC test with X.509 GSI
   test-s3                    S3/MinIO test with signed URLs
-  test-webdav                WebDAV TPC test with X.509 GSI
-  test-storm                 StoRM WebDAV TPC test with OIDC tokens
+  test-webdav-gsi            WebDAV TPC test with X.509 GSI
+  test-storm-oidc            StoRM WebDAV TPC test with OIDC tokens
   test-xrootd-oidc           XRootD TPC test with OIDC tokens (SciTokens)
-  test-rucio                 Rucio E2E transfer test
-  test-happy-pathes          Run all happy-path tests (in series)
+  test-rucio                 Rucio E2E TPC transfer test
+  test-teapot                Teapot WebDAV test with OIDC tokens
+  test-teapot-oidc           Teapot StoRM WebDAV instance TPC test with OIDC tokens
+  test-happy-paths           Run all happy-path tests (in series)
   test-failure-modes         Run fast failure mode tests
   test-failure-modes-slow    Run slow failure mode tests (token expiry, etc.)
-  test-teapot                Teapot WebDAV test with OIDC tokens
 
 Development
   lint                       Run pre-commit hooks on all files
@@ -186,8 +187,9 @@ sequenceDiagram
 | **Rucio E2E** | Hybrid (Userpass + X.509 GSI + OIDC Token/SciToken) | `make test-rucio` |
 | **XRootD TPC** | X.509 GSI | `make test-xrootd-gsi` |
 | **S3 / MinIO** | Signed URLs | `make test-s3` |
-| **WebDAV** | X.509 GSI | `make test-webdav` |
-| **StoRM WebDAV** | OIDC Token | `make test-storm` |
+| **WebDAV** | X.509 GSI | `make test-webdav-gsi` |
+| **StoRM WebDAV** | OIDC Token | `make test-storm-oidc` |
+| **Teapot StoRM WebDAV** | OIDC Token | `make test-teapot-oidc` |
 | **XRootD TPC** | SciToken | `make test-xrootd-oidc` |
 
 **NOTE:** The Rucio E2E tests validate the Manual Registration pattern (view [the user workflows document](./docs/user-workflows.md)), where files are seeded directly onto storage before being registered in the Rucio catalog.

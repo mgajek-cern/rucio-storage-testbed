@@ -66,6 +66,11 @@ spec:
               mountPath: /etc/teapot/user-mapping.csv
               subPath: user-mapping.csv
               readOnly: true
+            # Logback config (eu.emi.security DEBUG + file appender)
+            - name: configs
+              mountPath: /etc/teapot/logback.xml
+              subPath: teapot-logback.xml
+              readOnly: true
             # Teapot TLS cert + key
             - name: certs
               mountPath: /var/lib/teapot/webdav/teapot.crt
@@ -87,6 +92,16 @@ spec:
             - name: certs
               mountPath: /etc/storm/webdav/localhost.key
               subPath: {{ .Values.certFiles.stormLocalkey }}
+            # canl trust anchors — both hash variants required by
+            # OpensslCertChainValidator for TPC peer cert validation
+            - name: trust
+              mountPath: /etc/grid-security/certificates
+              readOnly: true
+            # JVM truststore — required for outbound HTTPS (OIDC/JWKS fetching)
+            - name: cacerts
+              mountPath: /opt/java/openjdk/lib/security/cacerts
+              subPath: storm-cacerts
+              readOnly: true
             # Pre-rendered Storm-WebDAV application.yml and storage area
             - name: configs
               mountPath: /var/lib/teapot/user-teapot/config/application.yml
@@ -96,7 +111,7 @@ spec:
               mountPath: /var/lib/teapot/user-teapot/sa.d/data.properties
               subPath: teapot-data.properties
               readOnly: true
-            # Patched teapot.py (Rosetta _get_proc fix)
+            # Patched teapot.py (JVM arg order fix + _get_proc fix)
             - name: patches
               mountPath: /usr/share/teapot/teapot.py
               subPath: teapot--teapot.py
@@ -127,6 +142,26 @@ spec:
               - key: {{ .Values.certFiles.ca }}
                 path: {{ .Values.certFiles.ca }}
                 mode: 0644
+        # canl trust anchor directory — both OpenSSL hash variants + signing policies
+        - name: trust
+          secret:
+            secretName: {{ .Values.trustSecret }}
+            items:
+              - key: rucio_ca.pem
+                path: 5fca1cb1.0
+              - key: rucio_ca.pem
+                path: b96dc756.0
+              - key: 5fca1cb1.signing_policy
+                path: 5fca1cb1.signing_policy
+              - key: b96dc756.signing_policy
+                path: b96dc756.signing_policy
+        # JVM truststore with testbed CA imported
+        - name: cacerts
+          secret:
+            secretName: {{ .Values.trustSecret }}
+            items:
+              - key: storm-cacerts
+                path: storm-cacerts
         - name: configs
           configMap:
             name: {{ .Values.configsConfigMap }}

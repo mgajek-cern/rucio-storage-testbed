@@ -117,4 +117,11 @@ dependencies:
   - name: teapot
     version: "0.1.0"
     repository: "file://../teapot"
-    condition: teapot.enabled
+    alias: teapot1
+    condition: teapot1.enabled
+
+  - name: teapot
+    version: "0.1.0"
+    repository: "file://../teapot"
+    alias: teapot2
+    condition: teapot2.enabled

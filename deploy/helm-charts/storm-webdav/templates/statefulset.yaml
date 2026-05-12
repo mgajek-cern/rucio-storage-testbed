@@ -116,10 +116,17 @@ spec:
               - key: rucio_ca.pem
                 path: 5fca1cb1.0
               - key: rucio_ca.pem
-                path: rucio_ca.pem
+                path: b96dc756.0
+              - key: 5fca1cb1.signing_policy
+                path: 5fca1cb1.signing_policy
+              - key: b96dc756.signing_policy
+                path: b96dc756.signing_policy
         - name: cacerts
           secret:
             secretName: {{ .Values.trustSecret }}
+            items:
+              - key: storm-cacerts
+                path: storm-cacerts
         - name: configs
           configMap:
             name: {{ .Values.configsConfigMap }}
