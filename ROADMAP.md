@@ -19,12 +19,20 @@
 - [x] **k8s GSI Fix:** Resolved five compounding issues preventing XRootD
   GSI TPC on Kubernetes (CA signing policies, file modes, static config,
   CRL level). Both runtimes now pass the full test suite.
-- [x] **Teapot WebDAV multi-tenancy service:** Adds Teapot as a WebDAV
-  proxy with per-user StoRM-WebDAV instances authenticated via Keycloak
-  OIDC tokens. Covers PROPFIND, PUT, GET, DELETE, and unauthenticated
-  rejection. TPC via Teapot deferred: single-instance mapping makes it
-  a loopback transfer rather than a meaningful cross-node test; requires
-  two Teapot deployments to validate properly.
+- [x] **Teapot WebDAV multi-tenancy service:** Adds two Teapot instances
+  (teapot1/teapot2) as WebDAV proxies with per-user StoRM-WebDAV instances
+  authenticated via Keycloak OIDC tokens. Covers PROPFIND, PUT, GET, DELETE,
+  unauthenticated rejection, FTS TPC between instances, and full Rucio
+  conveyor → fts-oidc → Teapot TPC (TEAPOT1 → TEAPOT2). Requires openid
+  scope in client-credentials grants for flaat /userinfo resolution.
+- [ ] **Rucio E2E transfers with S3 source:** Extend test-rucio-transfers.py
+  with S3/MinIO RSE pairs analogous to test-fts-with-s3.py, covering the
+  signed-URL path through the Rucio conveyor.
+- [ ] **VO-based Teapot mapping with eduperson_entitlements:** Configure
+  Keycloak to issue eduperson_entitlement claims alongside wlcg.groups and
+  demonstrate Teapot's VO mapping mode as an alternative to FILE mapping.
+  Requires group membership claims in the token, which the current
+  service account path does not support.
 
 ## Phase 2: Failure Mode Validation
 
