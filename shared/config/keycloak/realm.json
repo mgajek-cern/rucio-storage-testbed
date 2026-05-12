@@ -98,6 +98,13 @@
         { "type": "password", "value": "admin123", "temporary": false }
       ],
       "groups": [ "/rucio/admins", "/atlas/production" ]
+    },
+    {
+      "username": "service-account-rucio-oidc",
+      "id": "e8af11a6-76bb-44dd-abf7-32988c769cfc",
+      "enabled": true,
+      "email": "service-account-rucio-oidc@rucio",
+      "serviceAccountClientId": "rucio-oidc"
     }
   ],
   "clientScopes": [

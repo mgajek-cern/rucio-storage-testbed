@@ -46,7 +46,7 @@ help: ## Show this help (default target)
 ## Setup
 
 .PHONY: certs
-certs: ## Generate all certificates (CA, hosts, StoRM trust anchors, JVM cacerts)
+certs: ## Generate certificates (e.g. CA, hosts, StoRM trust anchors, JVM cacerts)
 	./shared/scripts/generate-certs.sh
 
 ## Stack lifecycle (compose-*)
@@ -80,7 +80,7 @@ compose-logs-%: ## Tail logs from a single service, e.g. `make compose-logs-ruci
 	$(COMPOSE) logs -f --tail=100 $*
 
 .PHONY: compose-build
-compose-build: ## Build local Docker images (fts, xrd, rucio-client-docker-kubectl)
+compose-build: ## Build local Docker images (e.g. fts, xrd, rucio-client-docker-kubectl, teapot)
 	$(COMPOSE) build
 
 .PHONY: bootstrap
@@ -174,7 +174,7 @@ test-failure-modes-slow: ## Run slow failure mode tests (token expiry, etc.)
 ## Development
 
 .PHONY: lint
-lint: ## Run pre-commit hooks on all files
+lint: ## Run pre-commit hooks on specific files
 	pre-commit run --all-files
 
 ## Cleanup
