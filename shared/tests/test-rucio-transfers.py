@@ -21,6 +21,9 @@ Typical invocations:
 
 import logging
 import time
+from urllib.parse import urlparse
+import binascii
+import zlib
 
 import pytest
 
@@ -31,11 +34,16 @@ from rucio.common.exception import Duplicate, RucioException, RuleNotFound
 from testbed import (
     RUNTIME,
     compute_pfn,
+    fetch_token_password,
     pfn_to_local,
     prepare_dest_dir,
     run_daemons,
     seed,
     svc_exec,
+    webdav_delete,
+    webdav_put,
+    webdav_get,
+    webdav_warm_up,
 )
 
 
@@ -47,6 +55,10 @@ RUCIO_OIDC = "rucio-oidc"
 XRD1, XRD2, XRD3, XRD4 = "xrd1", "xrd2", "xrd3", "xrd4"
 STORM1, STORM2 = "storm1", "storm2"
 FTS = "fts"
+TEAPOT1, TEAPOT2 = "teapot1", "teapot2"
+TEAPOT1_URL = "https://teapot1:8081"
+TEAPOT2_URL = "https://teapot2:8081"
+KEYCLOAK_TOKEN_URL = "https://keycloak:8443/realms/rucio/protocol/openid-connect/token"
 
 CFG_STD = "/opt/rucio/etc/userpass-client.cfg"
 CFG_OIDC = "/opt/rucio/etc/userpass-client-for-rucio-oidc.cfg"
@@ -99,6 +111,27 @@ def fts_proxy():
     )
     out = svc_exec(FTS, ["python3", "-c", py])
     log.info("  %s", out.decode().strip())
+
+
+@pytest.fixture(scope="session")
+def teapot_token():
+    """Obtain a Keycloak token with storage scopes for Teapot seeding."""
+    return fetch_token_password(
+        KEYCLOAK_TOKEN_URL,
+        "rucio-oidc",
+        "rucio-oidc-secret",
+        "randomaccount",
+        "secret",
+        scope="openid storage.read:/ storage.modify:/",
+    )
+
+
+@pytest.fixture(scope="session")
+def teapots_ready(teapot_token):
+    """Warm up both Teapot Storm-WebDAV instances before the transfer test."""
+    webdav_warm_up(TEAPOT1_URL, "/data/", "teapot1", teapot_token)
+    webdav_warm_up(TEAPOT2_URL, "/data/", "teapot2", teapot_token)
+    return True
 
 
 # ── Storage helpers ────────────────────────────────────────────────────────
@@ -240,6 +273,62 @@ def transfer_workflow(
 
     dst_path = pfn_to_local(dst_rse, compute_pfn(client, dst_rse, scope, name))
     prepare_dest_dir(dst_svc, dst_path, owner)
+
+    rule_id = add_rule(client, scope, name, dst_rse)
+    run_daemons(rucio_svc)
+    validate_rule(client, rule_id, label, rucio_svc)
+
+
+def webdav_transfer_workflow(
+    client: Client,
+    src_rse: str,
+    dst_rse: str,
+    src_url: str,
+    scope: str,
+    name: str,
+    rucio_svc: str,
+    token: str,
+    label: str,
+    seed_content: bytes = b"rucio-teapot-test\n",
+) -> None:
+    """Transfer workflow for WebDAV RSEs seeded via authenticated PUT.
+
+    Used for Teapot RSEs where direct filesystem access is not available.
+    The source file is seeded via webdav_put rather than svc_exec/seed.
+    File size and adler32 are computed locally from the seed content.
+    """
+
+    log.info("[ Test: %s (%s → %s) ]", label, src_rse, dst_rse)
+
+    pfn = compute_pfn(client, src_rse, scope, name)
+    log.info("  PFN: %s", pfn)
+
+    # Seed via authenticated WebDAV PUT
+    src_pfn = compute_pfn(client, src_rse, scope, name)
+    dst_pfn = compute_pfn(client, dst_rse, scope, name)
+    pfn_path = urlparse(src_pfn).path  # e.g. /data/ddmlab/a4/72/teapot-1778597452
+
+    log.info("  src PFN: %s", src_pfn)
+    log.info("  dst PFN: %s", dst_pfn)
+    log.info("  seed path: %s", pfn_path)
+
+    resp = webdav_put(f"{src_url}{pfn_path}", token, seed_content)
+    assert resp.status_code in {200, 201, 204}, (
+        f"Seed PUT returned HTTP {resp.status_code}: {resp.text[:200]}"
+    )
+    log.info("  ✓ Seed file uploaded via WebDAV PUT (HTTP %s)", resp.status_code)
+
+    verify = webdav_get(f"{src_url}{pfn_path}", token)
+    assert verify.status_code == 200, (
+        f"Seed not readable at PFN: GET {src_url}{pfn_path} → HTTP {verify.status_code}"
+    )
+    log.info("  ✓ Seed confirmed readable at PFN path (HTTP 200)")
+
+    # Compute checksum locally — Teapot does not expose adler32 in PROPFIND
+    adler = binascii.hexlify(zlib.adler32(seed_content).to_bytes(4, "big")).decode()
+    size = len(seed_content)
+
+    register_replica(client, src_rse, scope, name, pfn, size, adler)
 
     rule_id = add_rule(client, scope, name, dst_rse)
     run_daemons(rucio_svc)
@@ -393,3 +482,26 @@ def test_add_files_to_dataset(client_std, fts_proxy):
     rule_id = add_rule(client_std, scope, dataset, "XRD2")
     run_daemons(RUCIO)
     validate_rule(client_std, rule_id, "add_files_to_dataset XRD1→XRD2", RUCIO)
+
+
+def test_teapot_oidc(client_oidc, teapot_token, teapots_ready):
+    """Teapot WebDAV OIDC TPC: TEAPOT1 → TEAPOT2 via rucio-oidc.
+
+    Seeds the source file via authenticated WebDAV PUT (no filesystem exec).
+    Rucio conveyor submits to fts-oidc which performs the TPC pull.
+    """
+    name = f"teapot-{int(time.time())}"
+    # Clean up any stale file from a previous run
+    webdav_delete(f"{TEAPOT1_URL}/data/{name}", teapot_token)
+
+    webdav_transfer_workflow(
+        client_oidc,
+        src_rse="TEAPOT1",
+        dst_rse="TEAPOT2",
+        src_url=TEAPOT1_URL,
+        scope="ddmlab",
+        name=name,
+        rucio_svc=RUCIO_OIDC,
+        token=teapot_token,
+        label="Teapot OIDC",
+    )

@@ -69,7 +69,7 @@ RUNTIME=k8s make test-failure-modes
   help                       Show this help (default target)
 
 Setup
-  certs                      Generate all certificates (CA, hosts, StoRM trust anchors, JVM cacerts)
+  certs                      Generate certificates (e.g. CA, hosts, StoRM trust anchors, JVM cacerts)
 
 Stack lifecycle (compose-*)
   compose-up                 Start the full stack in the background
@@ -79,7 +79,7 @@ Stack lifecycle (compose-*)
   compose-ps                 List running containers
   compose-logs               Tail logs from all services (Ctrl-C to exit)
   compose-logs-%             Tail logs from a single service, e.g. `make compose-logs-rucio`
-  compose-build              Build local Docker images (fts, xrd, rucio-client-docker-kubectl)
+  compose-build              Build local Docker images (e.g. fts, xrd, rucio-client-docker-kubectl, teapot)
   bootstrap                  Bootstrap Rucio (uses $RUNTIME — set RUNTIME=k8s for kubernetes)
 
 Helm / Kubernetes lifecycle (helm-*, k8s-*)
@@ -105,7 +105,7 @@ Tests
   test-failure-modes-slow    Run slow failure mode tests (token expiry, etc.)
 
 Development
-  lint                       Run pre-commit hooks on all files
+  lint                       Run pre-commit hooks on specific files
 
 Cleanup
   clean                      Remove generated certs and volumes; keep CA (rucio_ca.pem + key)

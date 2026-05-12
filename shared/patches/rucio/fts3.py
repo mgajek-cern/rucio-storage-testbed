@@ -1320,7 +1320,7 @@ class FTS3Transfertool(Transfertool):
                 src_scope = determine_scope_for_rse(
                     rse_id=source.rse.id,
                     scopes=["storage.read"],
-                    extra_scopes=["offline_access"],
+                    extra_scopes=["offline_access", "openid"],
                 )
                 t_file["source_tokens"].append(request_token(src_audience, src_scope))
 
@@ -1330,7 +1330,7 @@ class FTS3Transfertool(Transfertool):
             dst_scope = determine_scope_for_rse(
                 transfer.dst.rse.id,
                 scopes=["storage.modify", "storage.read"],
-                extra_scopes=["offline_access"],
+                extra_scopes=["offline_access", "openid"],
             )
             t_file["destination_tokens"] = [request_token(dst_audience, dst_scope)]
 
