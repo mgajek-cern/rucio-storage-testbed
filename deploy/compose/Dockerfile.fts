@@ -17,7 +17,10 @@ RUN dnf install -y epel-release && \
     && dnf clean all
 
 # Build davix
-RUN git clone https://github.com/cern-fts/davix.git /tmp/davix && \
+RUN git clone https://github.com/mgajek-cern/davix.git /tmp/davix && \
+    cd /tmp/davix && \
+    git remote add upstream https://github.com/cern-fts/davix.git && \
+    git fetch upstream --tags && \
     mkdir /tmp/davix/build && cd /tmp/davix/build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
     -DENABLE_THIRD_PARTY_COPY=ON && \
