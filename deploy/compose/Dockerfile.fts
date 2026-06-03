@@ -28,7 +28,7 @@ RUN git clone https://github.com/mgajek-cern/davix.git /tmp/davix && \
     rm -rf /tmp/davix
 
 # Build GFAL2
-RUN git clone https://github.com/cern-fts/gfal2.git /tmp/gfal2 && \
+RUN git clone https://github.com/mgajek-cern/gfal2.git /tmp/gfal2 && \
     mkdir /tmp/gfal2/build && cd /tmp/gfal2/build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
     -DPLUGIN_DCAP=OFF -DPLUGIN_GRIDFTP=OFF \
