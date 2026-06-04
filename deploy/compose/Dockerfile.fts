@@ -1,5 +1,9 @@
 FROM almalinux:9 AS builder
 
+ARG DAVIX_COMMIT=004e37de0a4978109e08b2472d2337d71e2e5e08
+ARG GFAL2_COMMIT=bb4f21123a1353f7fc66d45785c9b6f699d1efd8
+ARG FTS3_COMMIT=57526a3fdaf01e5ccd71bebd88a6e7c2e299c82b
+
 RUN dnf install -y epel-release && \
     /usr/bin/crb enable && \
     dnf install -y \
@@ -18,7 +22,7 @@ RUN dnf install -y epel-release && \
 
 # Build davix
 RUN git clone https://github.com/mgajek-cern/davix.git /tmp/davix && \
-    cd /tmp/davix && \
+    cd /tmp/davix && git checkout ${DAVIX_COMMIT} && \
     git remote add upstream https://github.com/cern-fts/davix.git && \
     git fetch upstream --tags && \
     mkdir /tmp/davix/build && cd /tmp/davix/build && \
@@ -29,6 +33,7 @@ RUN git clone https://github.com/mgajek-cern/davix.git /tmp/davix && \
 
 # Build GFAL2
 RUN git clone https://github.com/mgajek-cern/gfal2.git /tmp/gfal2 && \
+    cd /tmp/gfal2 && git checkout ${GFAL2_COMMIT} && \
     mkdir /tmp/gfal2/build && cd /tmp/gfal2/build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
     -DPLUGIN_DCAP=OFF -DPLUGIN_GRIDFTP=OFF \
@@ -40,7 +45,9 @@ RUN git clone https://github.com/mgajek-cern/gfal2.git /tmp/gfal2 && \
 
 # Build FTS3
 RUN git clone https://gitlab.cern.ch/nramosga/fts3.git /tmp/fts3 && \
-    mkdir /tmp/fts3/build && cd /tmp/fts3/build && \
+    cd /tmp/fts3 && git checkout ${FTS3_COMMIT} && \
+    mkdir /tmp/fts3/build && \
+    cd /tmp/fts3/build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DALLBUILD=ON && \
     make -j$(nproc) && make install && \
     rm -rf /tmp/fts3
