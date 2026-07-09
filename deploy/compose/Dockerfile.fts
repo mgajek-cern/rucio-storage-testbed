@@ -2,7 +2,7 @@ FROM almalinux:9 AS builder
 
 ARG DAVIX_COMMIT=004e37de0a4978109e08b2472d2337d71e2e5e08
 ARG GFAL2_COMMIT=bb4f21123a1353f7fc66d45785c9b6f699d1efd8
-ARG FTS3_COMMIT=57526a3fdaf01e5ccd71bebd88a6e7c2e299c82b
+ARG FTS3_COMMIT=1bbd8340414057f5c939290dab4f7b0053d7add5
 
 RUN dnf install -y epel-release && \
     /usr/bin/crb enable && \
