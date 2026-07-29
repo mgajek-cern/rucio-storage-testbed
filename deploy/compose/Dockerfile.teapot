@@ -1,21 +1,23 @@
 FROM --platform=linux/amd64 ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
-ARG TEAPOT_VERSION=0.23.0
+ARG STORM_VERSION=1.13.0
+ARG TEAPOT_REPO=https://github.com/interTwin-eu/teapot.git
+ARG TEAPOT_REF=main
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     adduser curl ca-certificates openssl python3 \
     openjdk-21-jre-headless sudo \
+    git debhelper dh-python python3-pip wget rpm2cpio cpio build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL \
-    "https://github.com/interTwin-eu/teapot/releases/download/${TEAPOT_VERSION}/teapot_${TEAPOT_VERSION}-1_all.deb" \
-    -o /tmp/teapot.deb \
+RUN git clone --depth 1 --branch "${TEAPOT_REF}" "${TEAPOT_REPO}" /usr/src/teapot \
+    && cd /usr/src/teapot \
+    && STORM_VERSION=${STORM_VERSION} dpkg-buildpackage -us -uc -b \
     && apt-get update \
-    && apt-get install -y --no-install-recommends /tmp/teapot.deb \
-    && rm /tmp/teapot.deb \
+    && apt-get install -y --no-install-recommends /usr/src/teapot_*.deb \
+    && rm -rf /usr/src/teapot* /usr/src/*.deb /usr/src/*.buildinfo /usr/src/*.changes \
     && rm -rf /var/lib/apt/lists/*
 
-# Allow root (the teapot.py process user) to sudo -u teapot without password
 RUN echo "root ALL=(teapot) NOPASSWD: ALL" >> /etc/sudoers
 
 EXPOSE 8081
