@@ -1,59 +1,175 @@
 name: Build multi-arch images
 on:
   workflow_dispatch:
+env:
+  REGISTRY: docker.io
 
 jobs:
-  build-local:
-    runs-on: ubuntu-latest
+  # ─── Phase 1: build native per-arch images ─────────────────────────────
+  build:
+    name: Build ${{ matrix.image.name }} (${{ matrix.arch }})
     strategy:
+      fail-fast: false
       matrix:
+        arch: [amd64, arm64]
         include:
-          - { name: fts,               file: ./deploy/compose/Dockerfile.fts,               image: test-fts }
-          - { name: xrd,     file: ./deploy/compose/Dockerfile.xrd,     image: test-xrd }
-          - { name: rucio-client-docker-kubectl, file: ./deploy/compose/Dockerfile.rucio-client-docker-kubectl, image: rucio-client-docker-kubectl }
-          - { name: teapot, file: ./deploy/compose/Dockerfile.teapot, image: teapot }
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+        image:
+          - { name: test-fts,                       file: ./deploy/compose/Dockerfile.fts }
+          - { name: test-xrd,                        file: ./deploy/compose/Dockerfile.xrd }
+          - { name: rucio-client-docker-kubectl,     file: ./deploy/compose/Dockerfile.rucio-client-docker-kubectl }
+          - { name: teapot,                          file: ./deploy/compose/Dockerfile.teapot }
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
-      - uses: docker/setup-qemu-action@v3
-        with: { platforms: amd64,arm64 }
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
+      - name: Build and push (${{ matrix.arch }})
+        uses: docker/build-push-action@v5
         with:
           context: .
-          file: ${{ matrix.file }}
-          platforms: linux/amd64,linux/arm64
+          file: ${{ matrix.image.file }}
+          platforms: linux/${{ matrix.arch }}
           push: true
+          # Per-arch tags. The manifest job below stitches these into the
+          # user-facing :latest and :sha tags, then the cleanup job removes
+          # these temporary per-arch tags.
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image.name }}:${{ github.sha }}-${{ matrix.arch }}
+          cache-from: type=gha,scope=${{ matrix.image.name }}-${{ matrix.arch }}
+          cache-to:   type=gha,scope=${{ matrix.image.name }}-${{ matrix.arch }},mode=max
 
   build-storm-webdav:
-    runs-on: ubuntu-latest
+    name: Build storm-webdav (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
         with:
           repository: italiangrid/storm-webdav
-          ref: v1.12.0
-      - uses: docker/setup-qemu-action@v3
-        with: { platforms: amd64,arm64 }
+          ref: v1.13.0
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
+      - name: Build and push (${{ matrix.arch }})
+        uses: docker/build-push-action@v5
         with:
           context: .
+          platforms: linux/${{ matrix.arch }}
           push: true
-          platforms: linux/amd64,linux/arm64
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/storm-webdav:v1.12.0
-            ${{ secrets.DOCKERHUB_USERNAME }}/storm-webdav:latest
-          cache-from: type=gha,scope=storm-webdav
-          cache-to: type=gha,mode=max,scope=storm-webdav
+            ${{ secrets.DOCKERHUB_USERNAME }}/storm-webdav:v1.13.0-${{ matrix.arch }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/storm-webdav:${{ github.sha }}-${{ matrix.arch }}
+          cache-from: type=gha,scope=storm-webdav-${{ matrix.arch }}
+          cache-to:   type=gha,scope=storm-webdav-${{ matrix.arch }},mode=max
+
+  # ─── Phase 2: combine per-arch images into multi-arch manifests ───────
+  manifest:
+    name: Multi-arch manifest for ${{ matrix.image }}
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [test-fts, test-xrd, rucio-client-docker-kubectl, teapot]
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Create + push manifest
+        env:
+          REPO: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}
+          SHA: ${{ github.sha }}
+        run: |
+          docker buildx imagetools create \
+            --tag "${REPO}:${SHA}" \
+            --tag "${REPO}:latest" \
+            "${REPO}:${SHA}-amd64" \
+            "${REPO}:${SHA}-arm64"
+      - name: Verify
+        env:
+          REPO: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}
+        run: |
+          docker buildx imagetools inspect "${REPO}:latest"
+
+  manifest-storm-webdav:
+    name: Multi-arch manifest for storm-webdav
+    needs: build-storm-webdav
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Create + push manifest
+        env:
+          REPO: ${{ secrets.DOCKERHUB_USERNAME }}/storm-webdav
+          SHA: ${{ github.sha }}
+        run: |
+          docker buildx imagetools create \
+            --tag "${REPO}:${SHA}" \
+            --tag "${REPO}:latest" \
+            --tag "${REPO}:v1.13.0" \
+            "${REPO}:${SHA}-amd64" \
+            "${REPO}:${SHA}-arm64"
+      - name: Verify
+        env:
+          REPO: ${{ secrets.DOCKERHUB_USERNAME }}/storm-webdav
+        run: |
+          docker buildx imagetools inspect "${REPO}:latest"
+
+  # ─── Phase 3: delete the temporary per-arch tags from Docker Hub ──────
+  cleanup:
+    name: Remove per-arch tags
+    needs: [manifest, manifest-storm-webdav]
+    if: always() && needs.manifest.result == 'success' && needs.manifest-storm-webdav.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete temporary per-arch tags via Docker Hub API
+        env:
+          DHUSER: ${{ secrets.DOCKERHUB_USERNAME }}
+          DHPASS: ${{ secrets.DOCKERHUB_TOKEN }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          # Docker Hub's tag-delete API needs a JWT, not the registry auth
+          # used by docker/login-action — exchange the same credentials for one.
+          JWT=$(curl -s -H "Content-Type: application/json" \
+            -X POST -d "{\"username\": \"${DHUSER}\", \"password\": \"${DHPASS}\"}" \
+            https://hub.docker.com/v2/users/login/ | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])")
+
+          delete_tag() {
+            local repo="$1" tag="$2"
+            echo "Deleting ${DHUSER}/${repo}:${tag}"
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              -X DELETE \
+              -H "Authorization: JWT ${JWT}" \
+              "https://hub.docker.com/v2/repositories/${DHUSER}/${repo}/tags/${tag}/")
+            if [[ "$code" != "204" && "$code" != "404" ]]; then
+              echo "  ! unexpected status $code for ${repo}:${tag}"
+              return 1
+            fi
+          }
+
+          for repo in test-fts test-xrd rucio-client-docker-kubectl teapot storm-webdav; do
+            delete_tag "$repo" "${SHA}-amd64"
+            delete_tag "$repo" "${SHA}-arm64"
+          done
