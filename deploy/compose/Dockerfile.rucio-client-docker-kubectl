@@ -1,4 +1,4 @@
-FROM rucio/rucio-clients@sha256:d03fd88c2b6fe50a64a95cc7001486208aa115e3997658359158746eb178cc1d
+FROM rucio/rucio-clients:release-41.2.1
 
 USER root
 
