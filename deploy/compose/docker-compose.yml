@@ -658,7 +658,7 @@ services:
 
 
   rucio:
-    image: rucio/rucio-server@sha256:0d81e6c85616106443814a9c3193e13452da6a36de3d4569a7c9ca2d94db62b1
+    image: rucio/rucio-server:release-41.2.1
     hostname: rucio
     environment:
       - REQUESTS_CA_BUNDLE=/etc/grid-security/certificates/rucio_ca.pem
@@ -696,7 +696,7 @@ services:
       retries: 20
 
   rucio-oidc:
-    image: rucio/rucio-server@sha256:0d81e6c85616106443814a9c3193e13452da6a36de3d4569a7c9ca2d94db62b1
+    image: rucio/rucio-server:release-41.2.1
     hostname: rucio-oidc
     environment:
       - REQUESTS_CA_BUNDLE=/etc/grid-security/certificates/rucio_ca.pem

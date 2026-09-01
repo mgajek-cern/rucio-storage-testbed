@@ -54,7 +54,7 @@ DEFAULT_ACTIVITY = "User Subscriptions"
 KEY_TYPES = ["ALL", "COLLECTION", "FILE", "DERIVED"]
 # all(container, dataset, file), collection(dataset or container), file, derived(compute from file for collection)
 
-BASE_SCHEME_MAP = {
+SCHEME_MAP = {
     "srm": ["srm", "gsiftp"],
     "gsiftp": ["srm", "gsiftp"],
     "https": ["https", "http", "davs", "srm+https", "cs3s", "root"],

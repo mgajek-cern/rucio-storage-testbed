@@ -3,7 +3,7 @@
 
 image:
   repository: mgajekcern/rucio-client-docker-kubectl
-  tag: latest
+  tag: 3867d9453cff79ce4d3b9354065e1c57402dafc7
   pullPolicy: IfNotPresent
 
 fullnameOverride: rucio-client
