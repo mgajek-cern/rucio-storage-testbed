@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 ubuntu:24.04
+FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 ARG STORM_VERSION=1.13.0
 ARG TEAPOT_REPO=https://github.com/interTwin-eu/teapot.git
